@@ -157,11 +157,9 @@ public final class AppUpdater: ObservableObject {
         status = .downloading(0)
 
         do {
-            let zipURL = try await download(from: info.downloadURL) { [weak self] progress in
-                Task { @MainActor in
-                    self?.status = .downloading(progress)
-                }
-            }
+            status = .downloading(0.05)
+            let zipURL = try await download(from: info.downloadURL)
+            status = .downloading(1)
 
             status = .installing
             let extractedApp = try extractApp(from: zipURL)
@@ -175,18 +173,15 @@ public final class AppUpdater: ObservableObject {
         }
     }
 
-    private func download(from url: URL, onProgress: @escaping @Sendable (Double) -> Void) async throws -> URL {
-        onProgress(0.05)
+    private func download(from url: URL) async throws -> URL {
         let (tempURL, response) = try await session.download(from: url)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw UpdateError.httpStatus(http.statusCode)
         }
-        onProgress(0.9)
         let dest = FileManager.default.temporaryDirectory
             .appendingPathComponent("PulseBar-update-\(UUID().uuidString).zip")
         try? FileManager.default.removeItem(at: dest)
         try FileManager.default.moveItem(at: tempURL, to: dest)
-        onProgress(1)
         return dest
     }
 

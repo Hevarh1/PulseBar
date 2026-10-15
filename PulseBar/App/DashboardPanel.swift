@@ -142,7 +142,9 @@ final class DashboardPanel: NSPanel {
         if let monitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown],
             handler: { [weak self] _ in
-                Task { @MainActor in self?.dismiss() }
+                Task { @MainActor [weak self] in
+                    self?.dismiss()
+                }
             }
         ) {
             eventMonitors.append(monitor)
@@ -154,7 +156,9 @@ final class DashboardPanel: NSPanel {
             object: self,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.dismiss() }
+            Task { @MainActor [weak self] in
+                self?.dismiss()
+            }
         })
 
         workspaceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
@@ -162,7 +166,9 @@ final class DashboardPanel: NSPanel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.dismiss() }
+            Task { @MainActor [weak self] in
+                self?.dismiss()
+            }
         })
     }
 

@@ -162,7 +162,7 @@ public final class KeyboardCleaningController: ObservableObject {
 
         failsafeTimer?.invalidate()
         failsafeTimer = Timer.scheduledTimer(withTimeInterval: failsafeDuration, repeats: false) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.exitCleanMode()
             }
         }
@@ -214,7 +214,7 @@ public final class KeyboardCleaningController: ObservableObject {
         }
 
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.tickHold()
             }
         }
@@ -266,7 +266,7 @@ public final class KeyboardCleaningController: ObservableObject {
             matching: [.keyDown, .keyUp]
         ) { [weak self] event in
             if event.keyCode == 53 {
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     self?.noteEsc(down: event.type == .keyDown)
                 }
             }
