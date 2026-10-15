@@ -7,7 +7,6 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
     /// One `NSStatusItem` per metric (temperature, memory, CPU, …).
     private var statusItems: [MenuBarMetricKind: NSStatusItem] = [:]
     private var metricViews: [MenuBarMetricKind: MetricStatusTextView] = [:]
-    private var brandItem: NSStatusItem?
     private var fallbackItem: NSStatusItem?
     private var popover: NSPopover!
     private var cancellables = Set<AnyCancellable>()
@@ -114,17 +113,10 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             }
         }
 
-        // Brand glyph leftmost (created after metrics so it sits to their left).
-        ensureBrandItem()
-
         lastKindOrder = kinds
 
         if kinds.isEmpty {
             // Icon-only fallback when every metric is hidden in settings.
-            if let brandItem {
-                NSStatusBar.system.removeStatusItem(brandItem)
-                self.brandItem = nil
-            }
             if fallbackItem == nil {
                 let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
                 if let button = item.button {
@@ -143,21 +135,6 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
                 update(kind: kind, snapshot: snapshot, force: force)
             }
         }
-    }
-
-    private func ensureBrandItem() {
-        guard brandItem == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = item.button {
-            button.target = self
-            button.action = #selector(statusItemClicked(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.image = AppIcon.menuBarTemplateImage()
-            button.imagePosition = .imageOnly
-            button.toolTip = "PulseBar"
-            button.title = ""
-        }
-        brandItem = item
     }
 
     private func update(kind: MenuBarMetricKind, snapshot: SystemSnapshot, force: Bool) {

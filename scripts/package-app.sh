@@ -25,6 +25,14 @@ cp "$BIN" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
 cp "$ROOT/PulseBar/Info.plist" "$CONTENTS/Info.plist"
 
+# SPM resource bundle (Bundle.module) — required or the dashboard crashes on open.
+RESOURCE_BUNDLE="$(dirname "$BIN")/${APP_NAME}_${APP_NAME}.bundle"
+if [[ -d "$RESOURCE_BUNDLE" ]]; then
+  cp -R "$RESOURCE_BUNDLE" "$RESOURCES/"
+else
+  echo "warning: missing $RESOURCE_BUNDLE (Bundle.module assets may be unavailable)" >&2
+fi
+
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$CONTENTS/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string PulseBar" "$CONTENTS/Info.plist" 2>/dev/null \

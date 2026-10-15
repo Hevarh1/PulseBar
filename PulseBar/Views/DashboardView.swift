@@ -86,37 +86,44 @@ public struct DashboardView: View {
                 HStack(spacing: 6) {
                     Text("PulseBar")
                         .font(.system(size: 14, weight: .bold))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     liveDot
+                        .fixedSize()
                 }
                 Text(snapshot.cpu.chipModel)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
+            .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
-            if let temp = snapshot.thermal.temperatureCelsius {
+            HStack(spacing: 6) {
+                if let temp = snapshot.thermal.temperatureCelsius {
+                    headerChip(
+                        icon: "thermometer.medium",
+                        text: Formatters.formatTemperature(temp, unit: settings.temperatureUnit),
+                        color: thermalColor(snapshot.thermal.thermalState)
+                    )
+                }
+
+                if snapshot.battery.isPresent {
+                    headerChip(
+                        icon: "battery.100",
+                        text: "\(snapshot.battery.percentage)%",
+                        color: snapshot.battery.percentage < 20 ? .red : .secondary
+                    )
+                }
+
                 headerChip(
-                    icon: "thermometer.medium",
-                    text: Formatters.formatTemperature(temp, unit: settings.temperatureUnit),
-                    color: thermalColor(snapshot.thermal.thermalState)
+                    icon: "clock",
+                    text: Formatters.formatUptime(seconds: snapshot.uptime.uptimeSeconds),
+                    color: .secondary
                 )
             }
-
-            if snapshot.battery.isPresent {
-                headerChip(
-                    icon: "battery.100",
-                    text: "\(snapshot.battery.percentage)%",
-                    color: snapshot.battery.percentage < 20 ? .red : .secondary
-                )
-            }
-
-            headerChip(
-                icon: "clock",
-                text: Formatters.formatUptime(seconds: snapshot.uptime.uptimeSeconds),
-                color: .secondary
-            )
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

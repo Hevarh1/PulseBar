@@ -1,9 +1,28 @@
 import AppKit
 
 enum AppIcon {
-    /// Bundled marketing / Dock icon when packaged as `.app`.
+    /// Bundled marketing icon (`.app` Resources, then SPM package resources).
     static var applicationImage: NSImage? {
-        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+        // Prefer the packaged .app Resources — never touch Bundle.module first;
+        // SPM's accessor fatalErrors when PulseBar_PulseBar.bundle is missing.
+        if let image = Bundle.main.image(forResource: "AppIcon") {
+            return image
+        }
+        for ext in ["png", "icns"] {
+            if let url = Bundle.main.url(forResource: "AppIcon", withExtension: ext),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+        }
+        if let url = Bundle.main.resourceURL?
+            .appendingPathComponent("PulseBar_PulseBar.bundle")
+            .appendingPathComponent("Contents/Resources/AppIcon.png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        // `swift run` / debug: load via SPM resource bundle.
+        if Bundle.main.bundleURL.pathExtension != "app",
+           let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return image
         }
