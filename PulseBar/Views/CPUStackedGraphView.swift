@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Stacked CPU history: user load (blue) from the baseline, system load (red)
+/// as a band on top of it. Translucent fills so it sits naturally on glass.
 public struct CPUStackedGraphView: View {
     public let userPoints: [Double]
     public let sysPoints: [Double]
@@ -16,85 +18,74 @@ public struct CPUStackedGraphView: View {
             let count = max(userPoints.count, sysPoints.count)
             guard count >= 1 else { return }
 
-            let stepX = count > 1 ? size.width / CGFloat(count - 1) : size.width
-
-            // 1. Draw Total (User + System) Area with Red
-            var totalPath = Path()
-            var totalLine = Path()
-
-            let firstUser = userPoints.indices.contains(0) ? userPoints[0] : 0
-            let firstSys = sysPoints.indices.contains(0) ? sysPoints[0] : 0
-            let firstTotal = min(100.0, firstUser + firstSys)
-            let firstY = size.height - (CGFloat(firstTotal / 100.0) * (size.height - 4)) - 2
-
-            totalPath.move(to: CGPoint(x: 0, y: size.height))
-            totalPath.addLine(to: CGPoint(x: 0, y: firstY))
-            totalLine.move(to: CGPoint(x: 0, y: firstY))
-
-            if count == 1 {
-                totalPath.addLine(to: CGPoint(x: size.width, y: firstY))
-                totalLine.addLine(to: CGPoint(x: size.width, y: firstY))
-            } else {
-                for i in 1..<count {
-                    let u = userPoints.indices.contains(i) ? userPoints[i] : 0
-                    let s = sysPoints.indices.contains(i) ? sysPoints[i] : 0
-                    let tot = min(100.0, u + s)
-                    let y = size.height - (CGFloat(tot / 100.0) * (size.height - 4)) - 2
-                    let x = CGFloat(i) * stepX
-                    totalPath.addLine(to: CGPoint(x: x, y: y))
-                    totalLine.addLine(to: CGPoint(x: x, y: y))
-                }
+            var user = (0..<count).map { i in
+                userPoints.indices.contains(i) ? min(100.0, max(0, userPoints[i])) : 0
             }
-            totalPath.addLine(to: CGPoint(x: size.width, y: size.height))
-            totalPath.closeSubpath()
+            var total = (0..<count).map { i in
+                min(100.0, user[i] + (sysPoints.indices.contains(i) ? max(0, sysPoints[i]) : 0))
+            }
 
-            // Fill System area with red / coral
-            context.fill(
-                totalPath,
-                with: .color(Color(red: 0.95, green: 0.30, blue: 0.30).opacity(0.85))
-            )
+            let xs: [CGFloat]
+            if count == 1 {
+                // A single sample draws as a flat line across the graph.
+                xs = [0, size.width]
+                user.append(user[0])
+                total.append(total[0])
+            } else {
+                xs = (0..<count).map { CGFloat($0) * size.width / CGFloat(count - 1) }
+            }
 
-            // 2. Draw User Area with Blue on top of bottom
-            var userPath = Path()
+            func y(_ value: Double) -> CGFloat {
+                size.height - CGFloat(value / 100.0) * (size.height - 4) - 2
+            }
+            let userPts = zip(xs, user).map { CGPoint(x: $0, y: y($1)) }
+            let totalPts = zip(xs, total).map { CGPoint(x: $0, y: y($1)) }
+
             var userLine = Path()
+            userLine.addLines(userPts)
+            var totalLine = Path()
+            totalLine.addLines(totalPts)
 
-            let firstUserY = size.height - (CGFloat(firstUser / 100.0) * (size.height - 4)) - 2
-            userPath.move(to: CGPoint(x: 0, y: size.height))
-            userPath.addLine(to: CGPoint(x: 0, y: firstUserY))
-            userLine.move(to: CGPoint(x: 0, y: firstUserY))
+            var userArea = userLine
+            userArea.addLine(to: CGPoint(x: size.width, y: size.height))
+            userArea.addLine(to: CGPoint(x: 0, y: size.height))
+            userArea.closeSubpath()
 
-            if count == 1 {
-                userPath.addLine(to: CGPoint(x: size.width, y: firstUserY))
-                userLine.addLine(to: CGPoint(x: size.width, y: firstUserY))
-            } else {
-                for i in 1..<count {
-                    let u = userPoints.indices.contains(i) ? userPoints[i] : 0
-                    let y = size.height - (CGFloat(u / 100.0) * (size.height - 4)) - 2
-                    let x = CGFloat(i) * stepX
-                    userPath.addLine(to: CGPoint(x: x, y: y))
-                    userLine.addLine(to: CGPoint(x: x, y: y))
-                }
+            // System band: between the total line and the user line.
+            var systemBand = totalLine
+            for point in userPts.reversed() {
+                systemBand.addLine(to: point)
             }
-            userPath.addLine(to: CGPoint(x: size.width, y: size.height))
-            userPath.closeSubpath()
+            systemBand.closeSubpath()
 
-            // Fill User area with blue
+            let top = CGPoint(x: 0, y: 0)
+            let bottom = CGPoint(x: 0, y: size.height)
             context.fill(
-                userPath,
-                with: .color(Color(red: 0.20, green: 0.60, blue: 1.0).opacity(0.95))
+                systemBand,
+                with: .linearGradient(
+                    Gradient(colors: [DesignTokens.cpuSystem.opacity(0.55), DesignTokens.cpuSystem.opacity(0.25)]),
+                    startPoint: top,
+                    endPoint: bottom
+                )
+            )
+            context.fill(
+                userArea,
+                with: .linearGradient(
+                    Gradient(colors: [DesignTokens.cpuUser.opacity(0.6), DesignTokens.cpuUser.opacity(0.15)]),
+                    startPoint: top,
+                    endPoint: bottom
+                )
             )
 
-            // Draw line strokes
-            context.stroke(totalLine, with: .color(Color(red: 1.0, green: 0.4, blue: 0.4)), lineWidth: 1.5)
-            context.stroke(userLine, with: .color(Color(red: 0.35, green: 0.75, blue: 1.0)), lineWidth: 1.5)
+            let stroke = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+            context.stroke(totalLine, with: .color(DesignTokens.cpuSystem), style: stroke)
+            context.stroke(userLine, with: .color(DesignTokens.cpuUser), style: stroke)
         }
         .frame(height: height)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(red: 0.07, green: 0.11, blue: 0.16))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
         .animation(.easeInOut(duration: 0.28), value: userPoints.last)
         .animation(.easeInOut(duration: 0.28), value: sysPoints.last)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel("CPU history graph, user and system load")
     }
 }

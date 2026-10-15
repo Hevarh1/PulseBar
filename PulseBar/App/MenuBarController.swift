@@ -8,7 +8,10 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
     private var statusItems: [MenuBarMetricKind: NSStatusItem] = [:]
     private var metricViews: [MenuBarMetricKind: MetricStatusTextView] = [:]
     private var fallbackItem: NSStatusItem?
-    private var popover: NSPopover!
+    /// macOS 26+: tiles float over the desktop in a transparent panel.
+    private var panel: DashboardPanel?
+    /// macOS 14–15: classic popover.
+    private var popover: NSPopover?
     private var cancellables = Set<AnyCancellable>()
     private var lastSignatures: [MenuBarMetricKind: String] = [:]
     private var lastKindOrder: [MenuBarMetricKind] = []
@@ -21,7 +24,14 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             name: .pulseBarCloseDashboard,
             object: nil
         )
-        setupPopover()
+        if LiquidGlass.isAvailable {
+            setupPanel()
+        } else {
+            setupPopover()
+        }
+        DashboardShortcut.shared.onPress = { [weak self] in
+            self?.toggleDashboard(anchor: nil)
+        }
         rebuild(
             kinds: MenuBarRenderer.enabledKinds(
                 settings: AppSettings.shared,
@@ -31,6 +41,14 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             force: true
         )
         observeSnapshot()
+    }
+
+    private func setupPanel() {
+        let panel = DashboardPanel()
+        panel.onClose = {
+            MetricsCoordinator.shared.setDashboardVisible(false)
+        }
+        self.panel = panel
     }
 
     private func setupPopover() {
@@ -47,6 +65,14 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] snapshot in
                 self?.refresh(snapshot: snapshot)
+            }
+            .store(in: &cancellables)
+
+        // Emits the stored value on subscribe, so this also registers at launch.
+        AppSettings.shared.$dashboardShortcutEnabled
+            .removeDuplicates()
+            .sink { enabled in
+                DashboardShortcut.shared.setEnabled(enabled)
             }
             .store(in: &cancellables)
 
@@ -153,25 +179,70 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
             snapshot: snapshot,
             settings: settings
         )
+        // The value text fields are hidden from accessibility, so name the button.
+        item.button?.setAccessibilityLabel(
+            "PulseBar, \(kind.spokenName) \(MenuBarRenderer.displayValue(for: kind, snapshot: snapshot, settings: settings))"
+        )
         // Fixed width — prevents the bar from jiggling as digits change.
         item.length = MenuBarRenderer.itemWidth
     }
 
+    private var isDashboardShown: Bool {
+        panel?.isShown ?? popover?.isShown ?? false
+    }
+
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        if popover.isShown {
-            popover.performClose(sender)
+        toggleDashboard(anchor: sender)
+    }
+
+    /// Status-item click or the global shortcut (`anchor` is nil then).
+    private func toggleDashboard(anchor: NSStatusBarButton?) {
+        if isDashboardShown {
+            closeDashboard(anchor, restoringFocus: true)
             return
         }
-        presentPopover(relativeTo: sender)
+        // Status items stay clickable during runModal(). If a PulseBar alert
+        // (Empty Trash, Eject, errors) is up, surface it instead of opening a
+        // dashboard over it that can't be clicked.
+        if let modal = NSApp.modalWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            modal.makeKeyAndOrderFront(nil)
+            return
+        }
+        guard let button = anchor ?? shortcutAnchor else { return }
+        presentDashboard(relativeTo: button)
+    }
+
+    /// Where the shortcut opens the dashboard: the middle metric item, so the
+    /// panel centers under the group, or the icon-only fallback item.
+    private var shortcutAnchor: NSStatusBarButton? {
+        if !lastKindOrder.isEmpty,
+           let button = statusItems[lastKindOrder[lastKindOrder.count / 2]]?.button {
+            return button
+        }
+        return fallbackItem?.button
     }
 
     @objc public func closeDashboardIfShown() {
-        guard popover.isShown else { return }
-        popover.performClose(nil)
+        guard isDashboardShown else { return }
+        closeDashboard(nil)
     }
 
-    private func presentPopover(relativeTo button: NSStatusBarButton) {
+    private func closeDashboard(_ sender: Any?, restoringFocus: Bool = false) {
+        if let panel {
+            panel.dismiss(restoringFocus: restoringFocus)
+        } else {
+            popover?.performClose(sender)
+        }
+    }
+
+    private func presentDashboard(relativeTo button: NSStatusBarButton) {
         MetricsCoordinator.shared.setDashboardVisible(true)
+        if let panel {
+            panel.show(below: button, content: DashboardView())
+            return
+        }
+        guard let popover else { return }
         let host = NSHostingController(rootView: DashboardView())
         host.sizingOptions = [.intrinsicContentSize]
         popover.contentViewController = host
@@ -185,7 +256,7 @@ public final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     public func popoverDidClose(_ notification: Notification) {
-        popover.contentViewController = nil
+        popover?.contentViewController = nil
         MetricsCoordinator.shared.setDashboardVisible(false)
     }
 }

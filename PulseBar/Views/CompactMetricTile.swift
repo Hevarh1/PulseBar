@@ -1,18 +1,16 @@
 import SwiftUI
 
-/// Compact two-column dashboard tile.
+/// Compact two-column dashboard tile on a glass platter.
 public struct CompactMetricTile<Content: View>: View {
     public let title: String
     public let icon: String
     public let accent: Color
     @ViewBuilder public let content: () -> Content
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     public init(
         title: String,
         icon: String,
-        accent: Color = Color(red: 0.30, green: 0.58, blue: 1.0),
+        accent: Color = .accentColor,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
@@ -23,21 +21,22 @@ public struct CompactMetricTile<Content: View>: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(accent)
+            HStack(spacing: 6) {
+                IconWell(systemName: icon, style: .badge(accent), size: 18)
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Spacer(minLength: 0)
             }
 
             content()
         }
         .padding(DesignTokens.cardPadding)
-        .frame(maxWidth: .infinity, minHeight: DesignTokens.tileMinHeight, alignment: .topLeading)
-        .background(DesignTokens.cardBackground(reduceTransparency: reduceTransparency))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassPlatter()
+        // One VoiceOver group per tile, so columns aren't read interleaved.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -45,6 +44,7 @@ public struct CompactMetricTile<Content: View>: View {
 public struct LiveMetricValue: View {
     public let text: String
     public let size: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(_ text: String, size: CGFloat = 22) {
         self.text = text
@@ -53,10 +53,10 @@ public struct LiveMetricValue: View {
 
     public var body: some View {
         Text(text)
-            .font(.system(size: size, weight: .bold, design: .rounded))
+            .font(.system(size: size, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundColor(.primary)
-            .contentTransition(.numericText())
-            .animation(.snappy(duration: 0.35), value: text)
+            .foregroundStyle(.primary)
+            .contentTransition(reduceMotion ? .opacity : .numericText())
+            .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: text)
     }
 }

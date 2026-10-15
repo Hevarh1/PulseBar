@@ -60,6 +60,10 @@ public final class AppSettings: ObservableObject {
     @Published public var launchAtLogin: Bool {
         didSet { defaults.set(launchAtLogin, forKey: "launchAtLogin") }
     }
+    /// Global ⌃⌘P shortcut that shows or hides the dashboard.
+    @Published public var dashboardShortcutEnabled: Bool {
+        didSet { defaults.set(dashboardShortcutEnabled, forKey: "dashboardShortcutEnabled") }
+    }
 
     private init() {
         // Register default values if not yet set
@@ -75,6 +79,7 @@ public final class AppSettings: ObservableObject {
         if def.object(forKey: "showNetworkCard") == nil { def.set(true, forKey: "showNetworkCard") }
         if def.object(forKey: "showUtilityGrid") == nil { def.set(true, forKey: "showUtilityGrid") }
         if def.object(forKey: "samplingInterval") == nil { def.set(1.0, forKey: "samplingInterval") }
+        if def.object(forKey: "dashboardShortcutEnabled") == nil { def.set(true, forKey: "dashboardShortcutEnabled") }
 
         self.showMenuBarCPU = def.bool(forKey: "showMenuBarCPU")
         self.showMenuBarMemory = def.bool(forKey: "showMenuBarMemory")
@@ -95,5 +100,6 @@ public final class AppSettings: ObservableObject {
         let unitRaw = def.string(forKey: "temperatureUnitRaw") ?? TemperatureUnit.celsius.rawValue
         self.temperatureUnit = TemperatureUnit(rawValue: unitRaw) ?? .celsius
         self.launchAtLogin = def.bool(forKey: "launchAtLogin")
+        self.dashboardShortcutEnabled = def.bool(forKey: "dashboardShortcutEnabled")
     }
 }
