@@ -7,8 +7,9 @@ public struct DashboardView: View {
     @ObservedObject private var shortcut = DashboardShortcut.shared
     @State private var memoryFreeRequested = false
 
+    /// Order matters: tiles pair up in rows, so the graph tiles sit together.
     private enum Tile: CaseIterable {
-        case cpu, memory, network, storage, gpu, fan
+        case cpu, memory, network, gpu, storage, fan
     }
 
     public init() {}
@@ -428,16 +429,62 @@ public struct DashboardView: View {
     }
 
     private func gpuTile(_ snapshot: SystemSnapshot) -> some View {
-        CompactMetricTile(title: "GPU", icon: "display", accent: DesignTokens.gpu) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(snapshot.gpu.modelName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Utilization unavailable")
-                    .font(.system(size: 10))
-                    .foregroundStyle(DesignTokens.secondaryText)
+        let gpu = snapshot.gpu
+        return CompactMetricTile(title: "GPU", icon: "display", accent: DesignTokens.gpu) {
+            if let utilization = gpu.utilizationPercent {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline) {
+                        LiveMetricValue(Formatters.formatPercentage(utilization, precision: 0))
+                        Spacer(minLength: 0)
+                        if let cores = gpu.coreCount {
+                            Text("\(cores)c")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(DesignTokens.secondaryText)
+                                .accessibilityLabel("\(cores) cores")
+                        }
+                    }
+
+                    GraphView(
+                        dataPoints: snapshot.gpuHistory,
+                        maxValue: 100,
+                        strokeColor: DesignTokens.gpu,
+                        gradientColors: [DesignTokens.gpu.opacity(0.35), DesignTokens.gpu.opacity(0)],
+                        height: DesignTokens.graphHeightDefault,
+                        accessibilityName: "GPU history",
+                        accessibilityValueText: "\(Int(utilization)) percent"
+                    )
+                    .graphWell()
+
+                    HStack {
+                        if let renderer = gpu.rendererPercent {
+                            legendDot(
+                                DesignTokens.gpu,
+                                "Render \(Int(renderer))%",
+                                spoken: "Renderer \(Int(renderer)) percent"
+                            )
+                        }
+                        Spacer(minLength: 4)
+                        if let memory = gpu.memoryInUseBytes {
+                            Text("\(Formatters.formatBytes(memory)) used")
+                                .font(.system(size: 10))
+                                .foregroundStyle(DesignTokens.secondaryText)
+                                .lineLimit(1)
+                                .accessibilityLabel("GPU memory \(Formatters.formatBytes(memory))")
+                        }
+                    }
+                }
+            } else {
+                // Some GPUs (virtual machines, older drivers) publish no statistics.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(gpu.modelName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Utilization unavailable")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignTokens.secondaryText)
+                }
             }
         }
     }

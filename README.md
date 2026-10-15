@@ -19,7 +19,7 @@ Live CPU · Memory · Temperature · Network · utilities — with **zero teleme
 - **Menu bar** — TEM / MEM / CPU (and optional network, battery, uptime)
 - **Dashboard** — live graphs, sensors, and a full utility grid (no scrolling required)
 - **Native glass design** — on macOS 26+ the dashboard's Liquid Glass tiles float over the desktop like Control Center; macOS 14–15 get a frosted popover
-- **Honest sensors** — Activity Monitor–style memory; AppleSMC temperature (not fake thermal enums)
+- **Honest sensors** — Activity Monitor–style memory; AppleSMC temperature (not fake thermal enums); live GPU utilization from the GPU driver's own statistics
 - **Utilities** — Clean Keyboard / Screen, Dark Mode, Empty Trash, Lock, Hide Dock/Desktop, Keep Awake, Meeting Mode, and more
 - **Private by design** — no accounts, no analytics, no network for metrics
 

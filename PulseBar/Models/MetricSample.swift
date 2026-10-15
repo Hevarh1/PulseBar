@@ -254,6 +254,11 @@ public struct GPUSample: Identifiable, Sendable {
     public let coreCount: Int?
     public let isAvailable: Bool
     public let utilizationPercent: Double?
+    /// Apple silicon only: share of time the GPU's render and tiler stages are busy.
+    public let rendererPercent: Double?
+    public let tilerPercent: Double?
+    /// System memory the GPU driver currently has in use.
+    public let memoryInUseBytes: UInt64?
     public let timestamp: Date
 
     public init(
@@ -261,12 +266,18 @@ public struct GPUSample: Identifiable, Sendable {
         coreCount: Int? = nil,
         isAvailable: Bool = true,
         utilizationPercent: Double? = nil,
+        rendererPercent: Double? = nil,
+        tilerPercent: Double? = nil,
+        memoryInUseBytes: UInt64? = nil,
         timestamp: Date = Date()
     ) {
         self.modelName = modelName
         self.coreCount = coreCount
         self.isAvailable = isAvailable
         self.utilizationPercent = utilizationPercent
+        self.rendererPercent = rendererPercent
+        self.tilerPercent = tilerPercent
+        self.memoryInUseBytes = memoryInUseBytes
         self.timestamp = timestamp
     }
 }
