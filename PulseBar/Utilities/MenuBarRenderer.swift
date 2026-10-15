@@ -18,6 +18,18 @@ public enum MenuBarMetricKind: String, CaseIterable, Equatable {
         case .uptime: return "UP"
         }
     }
+
+    /// Full name for VoiceOver.
+    var spokenName: String {
+        switch self {
+        case .temperature: return "Temperature"
+        case .memory: return "Memory"
+        case .cpu: return "CPU"
+        case .network: return "Network"
+        case .battery: return "Battery"
+        case .uptime: return "Uptime"
+        }
+    }
 }
 
 @MainActor

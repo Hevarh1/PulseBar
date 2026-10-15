@@ -132,6 +132,9 @@ final class MonitoringTests: XCTestCase {
         print("Testing UtilityGrid...")
         _ = NSHostingView(rootView: UtilityGrid()).fittingSize
 
+        print("Testing SettingsView...")
+        _ = NSHostingView(rootView: SettingsView()).fittingSize
+
         print("Testing DashboardView...")
         let view = DashboardView()
         let host = NSHostingView(rootView: view)

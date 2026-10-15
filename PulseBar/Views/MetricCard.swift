@@ -8,7 +8,6 @@ public struct MetricCard<Content: View>: View {
     @ViewBuilder public let content: () -> Content
 
     @State private var showingDetails: Bool = false
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(
         title: String,
@@ -63,6 +62,6 @@ public struct MetricCard<Content: View>: View {
             content()
         }
         .padding(DesignTokens.cardPadding)
-        .background(DesignTokens.cardBackground(reduceTransparency: reduceTransparency))
+        .glassPlatter()
     }
 }

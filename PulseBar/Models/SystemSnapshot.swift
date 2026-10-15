@@ -20,6 +20,7 @@ public struct SystemSnapshot: Sendable {
     public let networkUpHistory: [Double]
     public let diskReadHistory: [Double]
     public let diskWriteHistory: [Double]
+    public let gpuHistory: [Double]
 
     public init(
         timestamp: Date = Date(),
@@ -39,7 +40,8 @@ public struct SystemSnapshot: Sendable {
         networkDownHistory: [Double] = [],
         networkUpHistory: [Double] = [],
         diskReadHistory: [Double] = [],
-        diskWriteHistory: [Double] = []
+        diskWriteHistory: [Double] = [],
+        gpuHistory: [Double] = []
     ) {
         self.timestamp = timestamp
         self.cpu = cpu
@@ -59,6 +61,7 @@ public struct SystemSnapshot: Sendable {
         self.networkUpHistory = networkUpHistory
         self.diskReadHistory = diskReadHistory
         self.diskWriteHistory = diskWriteHistory
+        self.gpuHistory = gpuHistory
     }
 
     public static let empty = SystemSnapshot()

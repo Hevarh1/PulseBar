@@ -12,7 +12,7 @@ public struct GPUCard: View {
             title: "GPU",
             icon: "display",
             iconColor: DesignTokens.accent,
-            detailsText: "Model: \(gpu.modelName)\nUtilization and power metrics are not exposed through public macOS APIs on this Mac."
+            detailsText: "Model: \(gpu.modelName)" + (gpu.utilizationPercent.map { "\nUtilization: \(Formatters.formatPercentage($0, precision: 0))" } ?? "")
         ) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(gpu.modelName)
@@ -20,9 +20,15 @@ public struct GPUCard: View {
                     .foregroundColor(.secondary)
                     .lineLimit(2)
 
-                Label("Utilization unavailable", systemImage: "minus.circle")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
+                if let utilization = gpu.utilizationPercent {
+                    Label(Formatters.formatPercentage(utilization, precision: 0), systemImage: "gauge.with.dots.needle.33percent")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                } else {
+                    Label("Utilization unavailable", systemImage: "minus.circle")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

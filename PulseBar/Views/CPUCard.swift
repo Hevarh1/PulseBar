@@ -54,6 +54,7 @@ public struct CPUCard: View {
                     sysPoints: systemHistory,
                     height: DesignTokens.graphHeightCPU
                 )
+                .graphWell()
 
                 // Detailed Legend
                 VStack(spacing: 6) {

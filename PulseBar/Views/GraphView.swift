@@ -6,19 +6,25 @@ public struct GraphView: View {
     public let strokeColor: Color
     public let gradientColors: [Color]
     public let height: CGFloat
+    public let accessibilityName: String
+    public let accessibilityValueText: String?
 
     public init(
         dataPoints: [Double],
         maxValue: Double = 100.0,
         strokeColor: Color = .blue,
         gradientColors: [Color] = [.blue.opacity(0.4), .blue.opacity(0.0)],
-        height: CGFloat = 48
+        height: CGFloat = 48,
+        accessibilityName: String = "History graph",
+        accessibilityValueText: String? = nil
     ) {
         self.dataPoints = dataPoints
         self.maxValue = maxValue > 0 ? maxValue : 100.0
         self.strokeColor = strokeColor
         self.gradientColors = gradientColors
         self.height = height
+        self.accessibilityName = accessibilityName
+        self.accessibilityValueText = accessibilityValueText
     }
 
     public var body: some View {
@@ -69,14 +75,24 @@ public struct GraphView: View {
             )
         }
         .frame(height: height)
-        .animation(.easeInOut(duration: 0.28), value: dataPoints.last)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("History graph with \(dataPoints.count) data points, latest value \(Int(dataPoints.last ?? 0))")
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue(accessibilityValueText ?? "\(Int(dataPoints.last ?? 0))")
     }
 
     private func yPosition(for value: Double, in size: CGSize) -> CGFloat {
         let clamped = max(0.0, min(maxValue, value))
         let normalizedY = 1.0 - (clamped / maxValue)
         return CGFloat(normalizedY) * (size.height - 4) + 2
+    }
+}
+
+extension View {
+    /// Subtle inset well that frames a graph on a glass tile.
+    func graphWell() -> some View {
+        let shape = RoundedRectangle(cornerRadius: DesignTokens.graphRadius, style: .continuous)
+        return clipShape(shape)
+            .background(Color.primary.opacity(0.05), in: shape)
     }
 }

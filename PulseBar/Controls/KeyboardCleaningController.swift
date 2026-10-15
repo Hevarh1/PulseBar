@@ -151,6 +151,13 @@ public final class KeyboardCleaningController: ObservableObject {
 
         if mode == .keyboard {
             installKeyBlocking()
+        } else {
+            // Screen mode doesn't block keys, but holding Esc still exits.
+            localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+                guard event.keyCode == 53 else { return event }
+                self?.noteEsc(down: event.type == .keyDown)
+                return nil
+            }
         }
 
         failsafeTimer?.invalidate()
@@ -338,7 +345,7 @@ private final class CleanOverlayWindow: NSWindow {
 
         let progressFill = NSView(frame: .zero)
         progressFill.wantsLayer = true
-        progressFill.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        progressFill.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
         progressFill.layer?.cornerRadius = 4
 
         let fillWidth = progressFill.widthAnchor.constraint(equalToConstant: 0)
@@ -360,6 +367,8 @@ private final class CleanOverlayWindow: NSWindow {
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         isReleasedWhenClosed = false
+        // Always dark: keeps secondary text legible on the dim and the glass dark.
+        appearance = NSAppearance(named: .darkAqua)
 
         let root = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
         root.wantsLayer = true
@@ -371,6 +380,10 @@ private final class CleanOverlayWindow: NSWindow {
         stack.alignment = .centerX
         stack.spacing = 18
         stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = Self.makeGlassCard()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(card)
         root.addSubview(stack)
 
         let icon = NSImageView()
@@ -379,7 +392,7 @@ private final class CleanOverlayWindow: NSWindow {
             systemSymbolName: symbol,
             accessibilityDescription: nil
         )
-        icon.contentTintColor = NSColor.systemBlue
+        icon.contentTintColor = NSColor.controlAccentColor
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 52, weight: .light)
 
         let title = makeLabel(
@@ -391,7 +404,7 @@ private final class CleanOverlayWindow: NSWindow {
         let subtitle = makeLabel(
             mode == .keyboard
                 ? "Keys are blocked. Hold Esc or the Exit button for 2 seconds to finish."
-                : "Screen dimmed for cleaning. Hold Exit for 2 seconds to finish.",
+                : "Screen dimmed for cleaning. Hold Esc or the Exit button for 2 seconds to finish.",
             size: 14,
             weight: .regular,
             color: .secondaryLabelColor
@@ -409,6 +422,10 @@ private final class CleanOverlayWindow: NSWindow {
         let exitButton = HoldExitButton()
         exitButton.title = "Exit"
         exitButton.onPressedChanged = onExitPress
+        // VoiceOver can't hold a button down; its press exits directly.
+        exitButton.onAccessibilityPress = {
+            DispatchQueue.main.async { KeyboardCleaningController.shared.exitCleanMode() }
+        }
         exitButton.translatesAutoresizingMaskIntoConstraints = false
 
         stack.addArrangedSubview(icon)
@@ -423,6 +440,11 @@ private final class CleanOverlayWindow: NSWindow {
             stack.centerYAnchor.constraint(equalTo: root.centerYAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 40),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -40),
+
+            card.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: -44),
+            card.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: 44),
+            card.topAnchor.constraint(equalTo: stack.topAnchor, constant: -36),
+            card.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: 36),
 
             progressBar.widthAnchor.constraint(equalToConstant: 260),
             progressBar.heightAnchor.constraint(equalToConstant: 8),
@@ -443,6 +465,31 @@ private final class CleanOverlayWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
+    /// Glass panel behind the overlay content: Liquid Glass on macOS 26+,
+    /// a HUD material on older systems.
+    private static func makeGlassCard() -> NSView {
+        let radius: CGFloat = 28
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = radius
+            return glass
+        }
+        #endif
+        let blur = NSVisualEffectView()
+        blur.material = .hudWindow
+        blur.blendingMode = .withinWindow
+        blur.state = .active
+        let mask = NSImage(size: NSSize(width: radius * 2 + 1, height: radius * 2 + 1), flipped: false) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        mask.resizingMode = .stretch
+        blur.maskImage = mask
+        return blur
+    }
+
     private func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
         let field = NSTextField(labelWithString: text)
         field.font = .systemFont(ofSize: size, weight: weight)
@@ -454,6 +501,7 @@ private final class CleanOverlayWindow: NSWindow {
 
 private final class HoldExitButton: NSButton {
     var onPressedChanged: ((Bool) -> Void)?
+    var onAccessibilityPress: (() -> Void)?
     private var isPressed = false
 
     override init(frame frameRect: NSRect) {
@@ -462,11 +510,14 @@ private final class HoldExitButton: NSButton {
         isBordered = false
         wantsLayer = true
         layer?.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = 22
         contentTintColor = .white
         font = .systemFont(ofSize: 15, weight: .semibold)
-        focusRingType = .none
         setButtonType(.momentaryChange)
+        // VoiceOver presses the button's cell, which sends this action;
+        // mouseDown is overridden, so a mouse click never does.
+        target = self
+        action = #selector(accessibilityPressed(_:))
     }
 
     @available(*, unavailable)
@@ -486,6 +537,10 @@ private final class HoldExitButton: NSButton {
             layer?.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
             onPressedChanged?(false)
         }
+    }
+
+    @objc private func accessibilityPressed(_ sender: Any?) {
+        onAccessibilityPress?()
     }
 
     override func mouseExited(with event: NSEvent) {

@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:PulseBar}",
+            "name": "Debug PulseBar",
+            "target": "PulseBar",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug PulseBar"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:PulseBar}",
+            "name": "Release PulseBar",
+            "target": "PulseBar",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release PulseBar"
+        }
+    ]
+}

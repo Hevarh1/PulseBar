@@ -1,138 +1,106 @@
 import SwiftUI
 import ServiceManagement
 
+/// System Settings–style grouped form. The window behind it is frosted glass
+/// (see `SettingsWindowController`), so the form hides its own background.
 public struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
-    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var shortcut = DashboardShortcut.shared
 
     public init() {}
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Preferences")
-                    .font(.system(size: 15, weight: .bold))
-                Spacer()
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
+        Form {
+            Section("Menu Bar Indicators") {
+                Toggle("Show Temperature", isOn: $settings.showMenuBarTemperature)
+                Toggle("Show CPU Usage (%)", isOn: $settings.showMenuBarCPU)
+                Toggle("Show Memory Usage (%)", isOn: $settings.showMenuBarMemory)
+                Toggle("Show Network Rate", isOn: $settings.showMenuBarNetwork)
+                Toggle("Show Battery Level", isOn: $settings.showMenuBarBattery)
+                Toggle("Show Uptime", isOn: $settings.showMenuBarUptime)
             }
-            .padding(16)
-            .background(Color(NSColor.windowBackgroundColor))
 
-            Divider()
+            Section("Dashboard Cards") {
+                Toggle("CPU Card", isOn: $settings.showCPUCard)
+                Toggle("Memory Card", isOn: $settings.showMemoryCard)
+                Toggle("Storage Card", isOn: $settings.showStorageCard)
+                Toggle("Network Card", isOn: $settings.showNetworkCard)
+                Toggle("GPU Card", isOn: $settings.showGPUCard)
+                Toggle("Fan Card", isOn: $settings.showFanCard)
+                Toggle("Mac Controls Grid", isOn: $settings.showUtilityGrid)
+            }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Menu Bar Display
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Menu Bar Indicators")
-                            .font(.system(size: 13, weight: .semibold))
+            Section("General") {
+                Picker("Update Interval", selection: $settings.samplingInterval) {
+                    Text("0.5 second").tag(0.5)
+                    Text("1 second").tag(1.0)
+                    Text("2 seconds").tag(2.0)
+                    Text("5 seconds").tag(5.0)
+                }
+                .onChange(of: settings.samplingInterval) { _, _ in
+                    // Open-tier interval is read from AppSettings; idle stays at 5s.
+                    MetricsCoordinator.shared.restartSampling()
+                }
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            Toggle("Show Temperature", isOn: $settings.showMenuBarTemperature)
-                            Toggle("Show CPU Usage (%)", isOn: $settings.showMenuBarCPU)
-                            Toggle("Show Memory Usage (%)", isOn: $settings.showMenuBarMemory)
-                            Toggle("Show Network Rate", isOn: $settings.showMenuBarNetwork)
-                            Toggle("Show Battery Level", isOn: $settings.showMenuBarBattery)
-                            Toggle("Show Uptime", isOn: $settings.showMenuBarUptime)
-                        }
-                        .toggleStyle(.checkbox)
-                        .padding(10)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                        .cornerRadius(8)
+                Picker("Temperature Unit", selection: $settings.temperatureUnit) {
+                    ForEach(TemperatureUnit.allCases) { unit in
+                        Text(unit.rawValue).tag(unit)
                     }
+                }
 
-                    // Visible Cards
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Dashboard Cards")
-                            .font(.system(size: 13, weight: .semibold))
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Toggle("CPU Card", isOn: $settings.showCPUCard)
-                            Toggle("Memory Card", isOn: $settings.showMemoryCard)
-                            Toggle("Storage Card", isOn: $settings.showStorageCard)
-                            Toggle("Network Card", isOn: $settings.showNetworkCard)
-                            Toggle("GPU Card", isOn: $settings.showGPUCard)
-                            Toggle("Fan Card", isOn: $settings.showFanCard)
-                            Toggle("Mac Controls Grid", isOn: $settings.showUtilityGrid)
+                Toggle(isOn: $settings.dashboardShortcutEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("Dashboard Shortcut")
+                            ShortcutKeycap(shortcut: DashboardShortcut.shortcut)
                         }
-                        .toggleStyle(.checkbox)
-                        .padding(10)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                        .cornerRadius(8)
-                    }
-
-                    // General Settings
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("General")
-                            .font(.system(size: 13, weight: .semibold))
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Update Interval")
-                                Spacer()
-                                Picker("", selection: $settings.samplingInterval) {
-                                    Text("0.5 second").tag(0.5)
-                                    Text("1 second").tag(1.0)
-                                    Text("2 seconds").tag(2.0)
-                                    Text("5 seconds").tag(5.0)
-                                }
-                                .frame(width: 140)
-                                .onChange(of: settings.samplingInterval) { _, _ in
-                                    // Open-tier interval is read from AppSettings; idle stays at 5s.
-                                    MetricsCoordinator.shared.restartSampling()
-                                }
-                            }
-
-                            HStack {
-                                Text("Temperature Unit")
-                                Spacer()
-                                Picker("", selection: $settings.temperatureUnit) {
-                                    ForEach(TemperatureUnit.allCases) { unit in
-                                        Text(unit.rawValue).tag(unit)
-                                    }
-                                }
-                                .frame(width: 140)
-                            }
-
-                            Toggle("Launch at Login", isOn: Binding(
-                                get: { settings.launchAtLogin },
-                                set: { newValue in
-                                    if configureLaunchAtLogin(enabled: newValue) {
-                                        settings.launchAtLogin = newValue
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.checkbox)
-                        }
-                        .padding(10)
-                        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                        .cornerRadius(8)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Privacy", systemImage: "lock.shield.fill")
-                            .font(.system(size: 13, weight: .semibold))
-
-                        Text("No network. No telemetry. No external downloads. Metrics and utilities stay on this Mac.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                        Text(shortcutCaption)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                    .cornerRadius(8)
                 }
-                .padding(16)
+
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { settings.launchAtLogin },
+                    set: { newValue in
+                        if configureLaunchAtLogin(enabled: newValue) {
+                            settings.launchAtLogin = newValue
+                        }
+                    }
+                ))
+            }
+
+            Section {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Privacy")
+                        Text("No network. No telemetry. No external downloads. Metrics and utilities stay on this Mac.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } icon: {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.blue, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
             }
         }
-        .frame(width: 360, height: 460)
+        .formStyle(.grouped)
+        .toggleStyle(.switch)
+        .scrollContentBackground(.hidden)
+        .frame(width: 400, height: 560)
+    }
+
+    private var shortcutCaption: String {
+        let keys = DashboardShortcut.shortcut.displayString
+        if settings.dashboardShortcutEnabled && !shortcut.isRegistered {
+            return "\(keys) couldn't be registered. Try turning it off and on again."
+        }
+        return "Press \(keys) in any app to show or hide the dashboard."
     }
 
     /// Returns false when registration is unsupported (e.g. `swift run` without a real .app bundle).

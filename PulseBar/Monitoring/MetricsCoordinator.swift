@@ -36,6 +36,7 @@ public final class MetricsCoordinator: ObservableObject {
     private var networkUpHistory: [Double] = []
     private var diskReadHistory: [Double] = []
     private var diskWriteHistory: [Double] = []
+    private var gpuHistory: [Double] = []
 
     /// Light EMA so menu-bar / dashboard numbers tick smoothly instead of jumping.
     private var smoothedCPUTotal: Double?
@@ -230,6 +231,9 @@ public final class MetricsCoordinator: ObservableObject {
         appendCPUMemoryNetworkHistories(cpu: cpu, memory: memory, network: network)
         appendHistory(&diskReadHistory, value: disk.readBytesPerSec)
         appendHistory(&diskWriteHistory, value: disk.writeBytesPerSec)
+        if let utilization = gpu.utilizationPercent {
+            appendHistory(&gpuHistory, value: utilization)
+        }
 
         let displayCPU = smoothedCPU(from: cpu)
         let displayMemory = smoothedMemory(from: memory)
@@ -252,7 +256,8 @@ public final class MetricsCoordinator: ObservableObject {
             networkDownHistory: networkDownHistory,
             networkUpHistory: networkUpHistory,
             diskReadHistory: diskReadHistory,
-            diskWriteHistory: diskWriteHistory
+            diskWriteHistory: diskWriteHistory,
+            gpuHistory: gpuHistory
         )
         currentSnapshot = snapshot
         sampleTick &+= 1
@@ -289,7 +294,8 @@ public final class MetricsCoordinator: ObservableObject {
             networkDownHistory: networkDownHistory,
             networkUpHistory: networkUpHistory,
             diskReadHistory: diskReadHistory,
-            diskWriteHistory: diskWriteHistory
+            diskWriteHistory: diskWriteHistory,
+            gpuHistory: gpuHistory
         )
         currentSnapshot = snapshot
         sampleTick &+= 1
