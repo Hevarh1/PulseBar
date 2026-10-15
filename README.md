@@ -21,7 +21,8 @@ Live CPU · Memory · Temperature · Network · utilities — with **zero teleme
 - **Native glass design** — on macOS 26+ the dashboard's Liquid Glass tiles float over the desktop like Control Center; macOS 14–15 get a frosted popover
 - **Honest sensors** — Activity Monitor–style memory; AppleSMC temperature (not fake thermal enums); live GPU utilization from the GPU driver's own statistics
 - **Utilities** — Clean Keyboard / Screen, Dark Mode, Empty Trash, Lock, Hide Dock/Desktop, Keep Awake, Meeting Mode, and more
-- **Private by design** — no accounts, no analytics, no network for metrics
+- **In-app updates** — Settings can check GitHub Releases and install the new `.app` for you
+- **Private by design** — no accounts, no analytics; metrics stay local (optional update check only)
 
 ## Requirements
 
@@ -95,10 +96,22 @@ PulseBar/
   Resources/     # AppIcon.png
 ```
 
+## Releasing (for maintainers)
+
+Pushes to `main` run [.github/workflows/release.yml](.github/workflows/release.yml), which builds `PulseBar.app.zip` and publishes a GitHub Release. Installed copies pick that up via **Settings → Updates**.
+
+Locally:
+
+```bash
+./scripts/package-app.sh
+gh release create v1.1.x dist/PulseBar.app.zip --title "PulseBar 1.1.x" --latest
+```
+
 ## Privacy
 
 - Metrics and preferences stay on your Mac.
-- No crash reporters, no update pings, no accounts.
+- No crash reporters, no accounts, no analytics.
+- Optional **update checks** contact GitHub Releases only (can be turned off in Settings).
 - Optional Automation / Accessibility only when you use those utilities.
 
 ## License

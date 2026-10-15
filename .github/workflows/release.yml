@@ -1,0 +1,54 @@
+name: Release
+
+# After merges to main, build PulseBar.app.zip and publish a GitHub Release
+# so installed apps can update from Settings → Check Now / Install.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Compute version
+        id: ver
+        run: |
+          BASE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' PulseBar/Info.plist)
+          MAJOR_MINOR=$(echo "$BASE" | awk -F. '{print $1"."($2==""?0:$2)}')
+          VERSION="${MAJOR_MINOR}.${{ github.run_number }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" PulseBar/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" PulseBar/Info.plist
+          echo "Publishing PulseBar $VERSION"
+
+      - name: Package .app
+        run: |
+          chmod +x scripts/package-app.sh
+          ./scripts/package-app.sh
+          test -f dist/PulseBar.app.zip
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          VERSION="${{ steps.ver.outputs.version }}"
+          gh release create "$TAG" dist/PulseBar.app.zip \
+            --title "PulseBar $VERSION" \
+            --notes "$(cat <<EOF
+          Automated build from \`${GITHUB_SHA:0:7}\` on \`main\`.
+
+          In PulseBar: **Settings → Updates → Check Now** (or wait for the automatic check), then **Install**.
+          EOF
+          )" \
+            --latest

@@ -9,6 +9,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         _ = MetricsCoordinator.shared
         menuBarController = MenuBarController()
+        AppUpdater.shared.scheduleAutomaticCheckIfNeeded()
     }
 
     public func applicationWillTerminate(_ notification: Notification) {

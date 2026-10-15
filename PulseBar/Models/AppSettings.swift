@@ -64,6 +64,10 @@ public final class AppSettings: ObservableObject {
     @Published public var dashboardShortcutEnabled: Bool {
         didSet { defaults.set(dashboardShortcutEnabled, forKey: "dashboardShortcutEnabled") }
     }
+    /// Periodically ask GitHub Releases for a newer PulseBar.app (install stays optional).
+    @Published public var checkForUpdatesAutomatically: Bool {
+        didSet { defaults.set(checkForUpdatesAutomatically, forKey: "checkForUpdatesAutomatically") }
+    }
 
     private init() {
         // Register default values if not yet set
@@ -80,6 +84,7 @@ public final class AppSettings: ObservableObject {
         if def.object(forKey: "showUtilityGrid") == nil { def.set(true, forKey: "showUtilityGrid") }
         if def.object(forKey: "samplingInterval") == nil { def.set(1.0, forKey: "samplingInterval") }
         if def.object(forKey: "dashboardShortcutEnabled") == nil { def.set(true, forKey: "dashboardShortcutEnabled") }
+        if def.object(forKey: "checkForUpdatesAutomatically") == nil { def.set(true, forKey: "checkForUpdatesAutomatically") }
 
         self.showMenuBarCPU = def.bool(forKey: "showMenuBarCPU")
         self.showMenuBarMemory = def.bool(forKey: "showMenuBarMemory")
@@ -101,5 +106,6 @@ public final class AppSettings: ObservableObject {
         self.temperatureUnit = TemperatureUnit(rawValue: unitRaw) ?? .celsius
         self.launchAtLogin = def.bool(forKey: "launchAtLogin")
         self.dashboardShortcutEnabled = def.bool(forKey: "dashboardShortcutEnabled")
+        self.checkForUpdatesAutomatically = def.bool(forKey: "checkForUpdatesAutomatically")
     }
 }

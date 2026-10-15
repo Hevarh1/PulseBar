@@ -6,6 +6,7 @@ import ServiceManagement
 public struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var shortcut = DashboardShortcut.shared
+    @ObservedObject private var updater = AppUpdater.shared
 
     public init() {}
 
@@ -71,11 +72,27 @@ public struct SettingsView: View {
                 ))
             }
 
+            Section("Updates") {
+                Toggle("Check for Updates Automatically", isOn: $settings.checkForUpdatesAutomatically)
+
+                HStack {
+                    Text("Version \(updater.currentVersion)")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    updateActionButtons
+                }
+
+                Text(updateStatusCaption)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Privacy")
-                        Text("No network. No telemetry. No external downloads. Metrics and utilities stay on this Mac.")
+                        Text("Metrics stay on this Mac. No telemetry. Optional update checks only contact GitHub Releases when enabled.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -92,7 +109,50 @@ public struct SettingsView: View {
         .formStyle(.grouped)
         .toggleStyle(.switch)
         .scrollContentBackground(.hidden)
-        .frame(width: 400, height: 560)
+        .frame(width: 400, height: 620)
+    }
+
+    @ViewBuilder
+    private var updateActionButtons: some View {
+        switch updater.status {
+        case .available(let info):
+            Button("Install \(info.version)") {
+                updater.installUpdate(info)
+            }
+            .buttonStyle(.borderedProminent)
+        case .downloading(let progress):
+            ProgressView(value: progress)
+                .frame(width: 80)
+        case .installing:
+            ProgressView()
+                .controlSize(.small)
+        case .checking:
+            ProgressView()
+                .controlSize(.small)
+        default:
+            Button("Check Now") {
+                Task { await updater.checkForUpdates(interactive: true) }
+            }
+        }
+    }
+
+    private var updateStatusCaption: String {
+        switch updater.status {
+        case .idle:
+            return "Installs replace this PulseBar.app and relaunch it. Requires a published GitHub Release."
+        case .checking:
+            return "Checking GitHub Releases…"
+        case .upToDate:
+            return "You’re on the latest release."
+        case .available(let info):
+            return "PulseBar \(info.version) is ready to install."
+        case .downloading(let progress):
+            return "Downloading update… \(Int(progress * 100))%"
+        case .installing:
+            return "Installing and relaunching…"
+        case .failed(let message):
+            return message
+        }
     }
 
     private var shortcutCaption: String {
