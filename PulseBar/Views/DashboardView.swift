@@ -5,8 +5,6 @@ public struct DashboardView: View {
     @ObservedObject private var coordinator = MetricsCoordinator.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var shortcut = DashboardShortcut.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pulse = false
     @State private var memoryFreeRequested = false
 
     private enum Tile: CaseIterable {
@@ -23,34 +21,33 @@ public struct DashboardView: View {
         GlassGroup {
             VStack(spacing: DesignTokens.sectionSpacing) {
                 header(snapshot: snapshot)
+                    .revealOnOpen(order: 0)
 
                 tileGrid(snapshot)
+                    .revealOnOpen(order: 1)
 
                 if settings.showUtilityGrid {
                     UtilityGrid()
+                        .revealOnOpen(order: 2)
                 }
 
                 footer
+                    .revealOnOpen(order: 3)
             }
             .padding(DesignTokens.contentPadding)
             .fixedSize(horizontal: false, vertical: true)
         }
         .frame(width: DesignTokens.popoverWidth)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: coordinator.sampleTick)
-        .onChange(of: coordinator.sampleTick) { _, _ in
-            guard !reduceMotion else { return }
-            withAnimation(.easeOut(duration: 0.2)) { pulse = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                withAnimation(.easeIn(duration: 0.55)) { pulse = false }
-            }
-        }
+        // No per-sample SwiftUI animations here: SwiftUI re-rasterizes the
+        // dashboard on the CPU every frame of any animation, so pulses, rolling
+        // digits or tick transitions kept the main thread 25-80% busy.
     }
 
     // MARK: - Header
 
     private func header(snapshot: SystemSnapshot) -> some View {
         HStack(alignment: .center, spacing: 10) {
-            if let appIcon = AppIcon.applicationImage {
+            if let appIcon = AppIcon.dashboardIcon {
                 Image(nsImage: appIcon)
                     .resizable()
                     .interpolation(.high)
@@ -94,11 +91,8 @@ public struct DashboardView: View {
 
     private var liveBadge: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(DesignTokens.accent)
+            PulseDot(tick: coordinator.sampleTick)
                 .frame(width: 6, height: 6)
-                .opacity(pulse ? 1.0 : 0.45)
-                .scaleEffect(pulse ? 1.2 : 1.0)
             Text("LIVE")
                 .font(.system(size: 10, weight: .bold))
                 .tracking(0.6)
@@ -171,8 +165,6 @@ public struct DashboardView: View {
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(DesignTokens.secondaryText)
-                .contentTransition(reduceMotion ? .opacity : .numericText())
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: text)
         }
         // SwiftUI drops accessibilityValue on a trait-less element, so the
         // value goes in the label.
@@ -412,7 +404,6 @@ public struct DashboardView: View {
                         Capsule()
                             .fill(DesignTokens.storage)
                             .frame(width: geo.size.width * CGFloat(min(1, max(0, snapshot.disk.usedPercentage / 100))))
-                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: snapshot.disk.usedPercentage)
                     }
                 }
                 .frame(height: 6)

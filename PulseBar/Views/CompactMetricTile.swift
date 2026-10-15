@@ -40,11 +40,11 @@ public struct CompactMetricTile<Content: View>: View {
     }
 }
 
-/// Large monospaced value that rolls when the number changes.
+/// Large monospaced value. Updates in place, without a rolling transition:
+/// animating every value each second kept the CPU busy.
 public struct LiveMetricValue: View {
     public let text: String
     public let size: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(_ text: String, size: CGFloat = 22) {
         self.text = text
@@ -56,7 +56,5 @@ public struct LiveMetricValue: View {
             .font(.system(size: size, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .foregroundStyle(.primary)
-            .contentTransition(reduceMotion ? .opacity : .numericText())
-            .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: text)
     }
 }

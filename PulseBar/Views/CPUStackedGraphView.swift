@@ -82,8 +82,6 @@ public struct CPUStackedGraphView: View {
             context.stroke(userLine, with: .color(DesignTokens.cpuUser), style: stroke)
         }
         .frame(height: height)
-        .animation(.easeInOut(duration: 0.28), value: userPoints.last)
-        .animation(.easeInOut(duration: 0.28), value: sysPoints.last)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
         .accessibilityLabel("CPU history graph, user and system load")

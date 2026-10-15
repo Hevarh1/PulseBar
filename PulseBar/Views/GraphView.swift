@@ -75,7 +75,6 @@ public struct GraphView: View {
             )
         }
         .frame(height: height)
-        .animation(.easeInOut(duration: 0.28), value: dataPoints.last)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
         .accessibilityLabel(accessibilityName)

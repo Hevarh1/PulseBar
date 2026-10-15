@@ -15,6 +15,7 @@ final class DashboardPanel: NSPanel {
     private var windowObservers: [NSObjectProtocol] = []
     private var workspaceObservers: [NSObjectProtocol] = []
     private var presentationID = 0
+    private var presentation: PanelPresentation?
     /// Frontmost app before the panel opened, so an explicit close (Esc, the
     /// shortcut, the status item) can hand keyboard focus back to it.
     private var previousApp: NSRunningApplication?
@@ -35,6 +36,8 @@ final class DashboardPanel: NSPanel {
         // Never drawn (borderless); gives VoiceOver a name for the window.
         title = "PulseBar"
     }
+
+    private static let closeDuration: TimeInterval = 0.16
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -58,11 +61,16 @@ final class DashboardPanel: NSPanel {
 
         // Fresh view per presentation; the previous one is released here,
         // never while one of its button actions might still be running.
-        let host = NSHostingView(rootView: content)
+        let presentation = PanelPresentation()
+        self.presentation = presentation
+        let host = NSHostingView(rootView: PresentedDashboard(presentation: presentation, content: content))
         var size = host.fittingSize
         if size.height > available {
             // Display shorter than the dashboard: scroll so the footer stays reachable.
-            let scrollHost = NSHostingView(rootView: ScrollView(.vertical) { content })
+            let scrollHost = NSHostingView(rootView: PresentedDashboard(
+                presentation: presentation,
+                content: ScrollView(.vertical) { content }
+            ))
             contentView = scrollHost
             // Width from the scroll host: a legacy (always-visible) scroller adds to it.
             size = NSSize(width: scrollHost.fittingSize.width, height: available)
@@ -76,14 +84,15 @@ final class DashboardPanel: NSPanel {
 
         let frontmost = NSWorkspace.shared.frontmostApplication
         previousApp = frontmost == NSRunningApplication.current ? nil : frontmost
-        alphaValue = 0
         NSApp.activate(ignoringOtherApps: true)
         makeKeyAndOrderFront(nil)
         isShown = true
         installDismissTriggers()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            animator().alphaValue = 1
+        // Drop in from the menu bar once the hidden first frame is up.
+        DispatchQueue.main.async { [weak presentation] in
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+                presentation?.isPresented = true
+            }
         }
     }
 
@@ -101,17 +110,17 @@ final class DashboardPanel: NSPanel {
         previousApp = nil
 
         let id = presentationID
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15
-            animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            Task { @MainActor in
-                // Skip if the panel was shown again while fading out.
-                guard let self, self.presentationID == id else { return }
-                self.orderOut(nil)
-                self.releaseContent(presentationID: id)
-            }
-        })
+        withAnimation(.easeIn(duration: Self.closeDuration)) {
+            presentation?.isPresented = false
+        }
+        // A fixed delay rather than an animation completion, so an invisible
+        // panel can never be left on screen catching clicks.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.closeDuration + 0.02) { [weak self] in
+            // Skip if the panel was shown again while closing.
+            guard let self, self.presentationID == id else { return }
+            self.orderOut(nil)
+            self.releaseContent(presentationID: id)
+        }
         onClose?()
     }
 
@@ -123,6 +132,7 @@ final class DashboardPanel: NSPanel {
             MainActor.assumeIsolated {
                 guard let self, self.presentationID == id, !self.isShown else { return }
                 self.contentView = nil
+                self.presentation = nil
             }
         }
     }
@@ -163,5 +173,30 @@ final class DashboardPanel: NSPanel {
         windowObservers.removeAll()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceObservers.removeAll()
+    }
+}
+
+/// Drives the panel's open and close animation.
+@MainActor
+private final class PanelPresentation: ObservableObject {
+    @Published var isPresented = false
+}
+
+/// Drops the dashboard from the menu bar with a spring on open and lifts it
+/// away on close. Scale and offset are render-only, so the fitted size is
+/// unaffected; sections cascade in through `dashboardRevealed`.
+private struct PresentedDashboard<Content: View>: View {
+    @ObservedObject var presentation: PanelPresentation
+    let content: Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let shown = presentation.isPresented
+        content
+            .environment(\.dashboardRevealed, shown)
+            .scaleEffect(shown || reduceMotion ? 1 : 0.94, anchor: .top)
+            .offset(y: shown || reduceMotion ? 0 : -10)
+            .opacity(shown ? 1 : 0)
     }
 }
