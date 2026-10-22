@@ -111,31 +111,13 @@ final class MonitoringTests: XCTestCase {
 
     @MainActor
     func testDashboardViewRendering() {
-        print("Testing CPUCard...")
-        _ = NSHostingView(rootView: CPUCard(cpu: CPUSample())).fittingSize
+        _ = NSHostingView(rootView: CompactMetricTile(title: "CPU", icon: "cpu") {
+            LiveMetricValue("12%")
+        }).fittingSize
 
-        print("Testing MemoryCard...")
-        _ = NSHostingView(rootView: MemoryCard(memory: MemorySample(), history: [], onFreeUp: {})).fittingSize
-
-        print("Testing StorageCard...")
-        _ = NSHostingView(rootView: StorageCard(disk: DiskSample())).fittingSize
-
-        print("Testing NetworkCard...")
-        _ = NSHostingView(rootView: NetworkCard(network: NetworkSample(), downloadHistory: [])).fittingSize
-
-        print("Testing GPUCard...")
-        _ = NSHostingView(rootView: GPUCard(gpu: GPUSample())).fittingSize
-
-        print("Testing FanCard...")
-        _ = NSHostingView(rootView: FanCard(fan: FanSample())).fittingSize
-
-        print("Testing UtilityGrid...")
         _ = NSHostingView(rootView: UtilityGrid()).fittingSize
-
-        print("Testing SettingsView...")
         _ = NSHostingView(rootView: SettingsView()).fittingSize
 
-        print("Testing DashboardView...")
         let view = DashboardView()
         let host = NSHostingView(rootView: view)
         let size = host.fittingSize

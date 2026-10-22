@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import ServiceManagement
 
 @MainActor
 public final class AppSettings: ObservableObject {
@@ -27,32 +28,38 @@ public final class AppSettings: ObservableObject {
         didSet { defaults.set(showMenuBarUptime, forKey: "showMenuBarUptime") }
     }
 
-    // MARK: - Dashboard Card Visibility
-    @Published public var showCPUCard: Bool {
-        didSet { defaults.set(showCPUCard, forKey: "showCPUCard") }
+    // MARK: - Dashboard Metric Visibility
+    // UserDefaults keys keep the historical `show*Card` names so existing prefs migrate.
+    @Published public var showDashboardCPU: Bool {
+        didSet { defaults.set(showDashboardCPU, forKey: "showCPUCard") }
     }
-    @Published public var showGPUCard: Bool {
-        didSet { defaults.set(showGPUCard, forKey: "showGPUCard") }
+    @Published public var showDashboardGPU: Bool {
+        didSet { defaults.set(showDashboardGPU, forKey: "showGPUCard") }
     }
-    @Published public var showMemoryCard: Bool {
-        didSet { defaults.set(showMemoryCard, forKey: "showMemoryCard") }
+    @Published public var showDashboardMemory: Bool {
+        didSet { defaults.set(showDashboardMemory, forKey: "showMemoryCard") }
     }
-    @Published public var showStorageCard: Bool {
-        didSet { defaults.set(showStorageCard, forKey: "showStorageCard") }
+    @Published public var showDashboardStorage: Bool {
+        didSet { defaults.set(showDashboardStorage, forKey: "showStorageCard") }
     }
-    @Published public var showFanCard: Bool {
-        didSet { defaults.set(showFanCard, forKey: "showFanCard") }
+    @Published public var showDashboardFan: Bool {
+        didSet { defaults.set(showDashboardFan, forKey: "showFanCard") }
     }
-    @Published public var showNetworkCard: Bool {
-        didSet { defaults.set(showNetworkCard, forKey: "showNetworkCard") }
+    @Published public var showDashboardNetwork: Bool {
+        didSet { defaults.set(showDashboardNetwork, forKey: "showNetworkCard") }
     }
     @Published public var showUtilityGrid: Bool {
         didSet { defaults.set(showUtilityGrid, forKey: "showUtilityGrid") }
     }
 
     // MARK: - Refresh and Display
+    /// Sampling rate while the dashboard is open.
     @Published public var samplingInterval: Double {
         didSet { defaults.set(samplingInterval, forKey: "samplingInterval") }
+    }
+    /// Sampling rate for menu-bar indicators while the dashboard is closed.
+    @Published public var menuBarSamplingInterval: Double {
+        didSet { defaults.set(menuBarSamplingInterval, forKey: "menuBarSamplingInterval") }
     }
     @Published public var temperatureUnit: TemperatureUnit {
         didSet { defaults.set(temperatureUnit.rawValue, forKey: "temperatureUnitRaw") }
@@ -83,6 +90,7 @@ public final class AppSettings: ObservableObject {
         if def.object(forKey: "showNetworkCard") == nil { def.set(true, forKey: "showNetworkCard") }
         if def.object(forKey: "showUtilityGrid") == nil { def.set(true, forKey: "showUtilityGrid") }
         if def.object(forKey: "samplingInterval") == nil { def.set(1.0, forKey: "samplingInterval") }
+        if def.object(forKey: "menuBarSamplingInterval") == nil { def.set(1.0, forKey: "menuBarSamplingInterval") }
         if def.object(forKey: "dashboardShortcutEnabled") == nil { def.set(true, forKey: "dashboardShortcutEnabled") }
         if def.object(forKey: "checkForUpdatesAutomatically") == nil { def.set(true, forKey: "checkForUpdatesAutomatically") }
 
@@ -93,19 +101,40 @@ public final class AppSettings: ObservableObject {
         self.showMenuBarBattery = def.bool(forKey: "showMenuBarBattery")
         self.showMenuBarUptime = def.bool(forKey: "showMenuBarUptime")
 
-        self.showCPUCard = def.bool(forKey: "showCPUCard")
-        self.showGPUCard = def.bool(forKey: "showGPUCard")
-        self.showMemoryCard = def.bool(forKey: "showMemoryCard")
-        self.showStorageCard = def.bool(forKey: "showStorageCard")
-        self.showFanCard = def.bool(forKey: "showFanCard")
-        self.showNetworkCard = def.bool(forKey: "showNetworkCard")
+        self.showDashboardCPU = def.bool(forKey: "showCPUCard")
+        self.showDashboardGPU = def.bool(forKey: "showGPUCard")
+        self.showDashboardMemory = def.bool(forKey: "showMemoryCard")
+        self.showDashboardStorage = def.bool(forKey: "showStorageCard")
+        self.showDashboardFan = def.bool(forKey: "showFanCard")
+        self.showDashboardNetwork = def.bool(forKey: "showNetworkCard")
         self.showUtilityGrid = def.bool(forKey: "showUtilityGrid")
 
         self.samplingInterval = def.double(forKey: "samplingInterval") > 0 ? def.double(forKey: "samplingInterval") : 1.0
+        self.menuBarSamplingInterval = def.double(forKey: "menuBarSamplingInterval") > 0
+            ? def.double(forKey: "menuBarSamplingInterval")
+            : 1.0
         let unitRaw = def.string(forKey: "temperatureUnitRaw") ?? TemperatureUnit.celsius.rawValue
         self.temperatureUnit = TemperatureUnit(rawValue: unitRaw) ?? .celsius
         self.launchAtLogin = def.bool(forKey: "launchAtLogin")
         self.dashboardShortcutEnabled = def.bool(forKey: "dashboardShortcutEnabled")
         self.checkForUpdatesAutomatically = def.bool(forKey: "checkForUpdatesAutomatically")
+
+        syncLaunchAtLoginFromSystem()
+    }
+
+    /// Align the toggle with `SMAppService` so it stays truthful after System Settings changes.
+    public func syncLaunchAtLoginFromSystem() {
+        guard #available(macOS 13.0, *) else { return }
+        guard isBundledApp else { return }
+
+        let enabled = SMAppService.mainApp.status == .enabled
+        if launchAtLogin != enabled {
+            launchAtLogin = enabled
+        }
+    }
+
+    private var isBundledApp: Bool {
+        let bundlePath = Bundle.main.bundleURL.path
+        return bundlePath.hasSuffix(".app") || bundlePath.contains(".app/")
     }
 }

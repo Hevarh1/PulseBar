@@ -73,7 +73,7 @@ PulseBar never phones home. Permissions are only for local system controls you t
 
 1. Look for **TEM / MEM / CPU** in the menu bar.
 2. Click any of them to open the dashboard — or press **⌃⌘P** (Control-Command-P) in any app to show or hide it. The shortcut is shown in the dashboard header and can be turned off in Settings.
-3. Use **Settings** (gear) for sampling interval, units, and which metrics appear in the menu bar.
+3. Use **Settings** (gear) for menu-bar / dashboard intervals, units, and which metrics appear.
 4. Quit from the dashboard footer or Force Quit if needed.
 
 ## Development
@@ -98,13 +98,26 @@ PulseBar/
 
 ## Releasing (for maintainers)
 
-Pushes to `main` run [.github/workflows/release.yml](.github/workflows/release.yml), which builds `PulseBar.app.zip` and publishes a GitHub Release. Installed copies pick that up via **Settings → Updates**.
+Releases are **tag-driven**. Pushing a `v*` tag (for example `v1.2.0`) runs [.github/workflows/release.yml](.github/workflows/release.yml), which:
 
-Locally:
+1. Sets `CFBundleShortVersionString` from the tag
+2. Builds `PulseBar.app.zip`
+3. Publishes a GitHub Release with notes generated from commits since the previous tag
+
+Installed copies pick that up via **Settings → Updates**.
 
 ```bash
-./scripts/package-app.sh
-gh release create v1.1.x dist/PulseBar.app.zip --title "PulseBar 1.1.x" --latest
+# Bump the marketing version in PulseBar/Info.plist if needed, then:
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Pull requests and pushes to `main` run [.github/workflows/ci.yml](.github/workflows/ci.yml) (`swift build` + `swift test`) and do **not** publish a release.
+
+Optional local Xcode project (ignored by git):
+
+```bash
+python3 scripts/generate_xcodeproj.py   # writes PulseBar.xcodeproj
 ```
 
 ## Privacy

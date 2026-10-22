@@ -21,25 +21,33 @@ public struct SettingsView: View {
                 Toggle("Show Uptime", isOn: $settings.showMenuBarUptime)
             }
 
-            Section("Dashboard Cards") {
-                Toggle("CPU Card", isOn: $settings.showCPUCard)
-                Toggle("Memory Card", isOn: $settings.showMemoryCard)
-                Toggle("Storage Card", isOn: $settings.showStorageCard)
-                Toggle("Network Card", isOn: $settings.showNetworkCard)
-                Toggle("GPU Card", isOn: $settings.showGPUCard)
-                Toggle("Fan Card", isOn: $settings.showFanCard)
+            Section("Dashboard Metrics") {
+                Toggle("CPU", isOn: $settings.showDashboardCPU)
+                Toggle("Memory", isOn: $settings.showDashboardMemory)
+                Toggle("Storage", isOn: $settings.showDashboardStorage)
+                Toggle("Network", isOn: $settings.showDashboardNetwork)
+                Toggle("GPU", isOn: $settings.showDashboardGPU)
+                Toggle("Fan", isOn: $settings.showDashboardFan)
                 Toggle("Mac Controls Grid", isOn: $settings.showUtilityGrid)
             }
 
             Section("General") {
-                Picker("Update Interval", selection: $settings.samplingInterval) {
+                Picker("Menu Bar Interval", selection: $settings.menuBarSamplingInterval) {
+                    Text("1 second").tag(1.0)
+                    Text("2 seconds").tag(2.0)
+                    Text("5 seconds").tag(5.0)
+                }
+                .onChange(of: settings.menuBarSamplingInterval) { _, _ in
+                    MetricsCoordinator.shared.restartSampling()
+                }
+
+                Picker("Dashboard Interval", selection: $settings.samplingInterval) {
                     Text("0.5 second").tag(0.5)
                     Text("1 second").tag(1.0)
                     Text("2 seconds").tag(2.0)
                     Text("5 seconds").tag(5.0)
                 }
                 .onChange(of: settings.samplingInterval) { _, _ in
-                    // Open-tier interval is read from AppSettings; idle stays at 5s.
                     MetricsCoordinator.shared.restartSampling()
                 }
 
@@ -109,7 +117,10 @@ public struct SettingsView: View {
         .formStyle(.grouped)
         .toggleStyle(.switch)
         .scrollContentBackground(.hidden)
-        .frame(width: 400, height: 620)
+        .frame(width: 400, height: 660)
+        .onAppear {
+            settings.syncLaunchAtLoginFromSystem()
+        }
     }
 
     @ViewBuilder

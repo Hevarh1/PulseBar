@@ -204,12 +204,12 @@ public struct DashboardView: View {
     private var visibleTiles: [Tile] {
         Tile.allCases.filter { tile in
             switch tile {
-            case .cpu: return settings.showCPUCard
-            case .memory: return settings.showMemoryCard
-            case .network: return settings.showNetworkCard
-            case .storage: return settings.showStorageCard
-            case .gpu: return settings.showGPUCard
-            case .fan: return settings.showFanCard
+            case .cpu: return settings.showDashboardCPU
+            case .memory: return settings.showDashboardMemory
+            case .network: return settings.showDashboardNetwork
+            case .storage: return settings.showDashboardStorage
+            case .gpu: return settings.showDashboardGPU
+            case .fan: return settings.showDashboardFan
             }
         }
     }

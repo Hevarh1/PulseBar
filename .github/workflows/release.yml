@@ -1,11 +1,17 @@
 name: Release
 
-# After merges to main, build PulseBar.app.zip and publish a GitHub Release
-# so installed apps can update from Settings → Check Now / Install.
+# Publish only when a version tag is pushed (or via manual dispatch).
+# Example: git tag v1.2.0 && git push origin v1.2.0
 on:
   push:
-    branches: [main]
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (e.g. v1.2.0). Leave empty to use the triggering tag."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -15,21 +21,40 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Compute version
+      - name: Resolve version from tag
         id: ver
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          BASE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' PulseBar/Info.plist)
-          MAJOR_MINOR=$(echo "$BASE" | awk -F. '{print $1"."($2==""?0:$2)}')
-          VERSION="${MAJOR_MINOR}.${{ github.run_number }}"
+          set -euo pipefail
+          if [[ -n "${INPUT_TAG:-}" ]]; then
+            TAG="$INPUT_TAG"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            echo "No tag provided. Push a v* tag or pass workflow_dispatch.tag." >&2
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+            echo "Tag must look like v1.2.0 (got: $TAG)" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          BUILD="${{ github.run_number }}"
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" PulseBar/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" PulseBar/Info.plist
-          echo "Publishing PulseBar $VERSION"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" PulseBar/Info.plist
+          echo "Publishing PulseBar $VERSION ($TAG)"
 
       - name: Package .app
         run: |
@@ -40,15 +65,43 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          TAG="${{ steps.ver.outputs.tag }}"
-          VERSION="${{ steps.ver.outputs.version }}"
-          gh release create "$TAG" dist/PulseBar.app.zip \
-            --title "PulseBar $VERSION" \
-            --notes "$(cat <<EOF
-          Automated build from \`${GITHUB_SHA:0:7}\` on \`main\`.
+          set -euo pipefail
 
-          In PulseBar: **Settings → Updates → Check Now** (or wait for the automatic check), then **Install**.
-          EOF
-          )" \
-            --latest
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          if [[ -n "$PREV_TAG" ]]; then
+            CHANGELOG=$(git log --pretty=format:'- %s (%h)' "${PREV_TAG}..${TAG}")
+            RANGE_LABEL="Changes since \`${PREV_TAG}\`"
+          else
+            CHANGELOG=$(git log --pretty=format:'- %s (%h)' "${TAG}" --max-count=30)
+            RANGE_LABEL="Commits in this release"
+          fi
+
+          if [[ -z "$CHANGELOG" ]]; then
+            CHANGELOG="- No commit messages available for this range."
+          fi
+
+          NOTES_FILE="$(mktemp)"
+          {
+            echo "## PulseBar ${VERSION}"
+            echo
+            echo "${RANGE_LABEL}:"
+            echo
+            echo "${CHANGELOG}"
+            echo
+            echo "---"
+            echo
+            echo "In PulseBar: **Settings → Updates → Check Now** (or wait for the automatic check), then **Install**."
+          } > "$NOTES_FILE"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/PulseBar.app.zip --clobber
+            gh release edit "$TAG" --title "PulseBar $VERSION" --notes-file "$NOTES_FILE" --latest
+          else
+            gh release create "$TAG" dist/PulseBar.app.zip \
+              --title "PulseBar $VERSION" \
+              --notes-file "$NOTES_FILE" \
+              --latest
+          fi

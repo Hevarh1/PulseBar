@@ -26,5 +26,7 @@
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>PulseBar uses automation to toggle Dark Mode, empty the Trash, and lock the screen when needed.</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>PulseBar needs Accessibility access to block keyboard input while Clean Keyboard mode is on, so you can wipe the keys without typing accidentally.</string>
 </dict>
 </plist>

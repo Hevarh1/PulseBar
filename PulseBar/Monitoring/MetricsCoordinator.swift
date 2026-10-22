@@ -5,8 +5,8 @@ import Combine
 public final class MetricsCoordinator: ObservableObject {
     public static let shared = MetricsCoordinator()
 
-    /// Menu-bar refresh while the popover is closed — ~1 Hz live updates.
-    public static let idleSamplingInterval: TimeInterval = 1.0
+    /// Default menu-bar refresh while the dashboard is closed.
+    public static let defaultMenuBarSamplingInterval: TimeInterval = 1.0
 
     @Published public private(set) var currentSnapshot: SystemSnapshot = .empty
     @Published public private(set) var isRunning: Bool = false
@@ -77,9 +77,10 @@ public final class MetricsCoordinator: ObservableObject {
         isRunning = true
 
         let dashboardVisible = isDashboardVisible
-        // ~1s in the menu bar; preferences control open-dashboard rate.
+        // Preferences control both tiers: menu-bar (idle) and open-dashboard rates.
         let openInterval = max(0.5, AppSettings.shared.samplingInterval)
-        let interval = dashboardVisible ? openInterval : Self.idleSamplingInterval
+        let idleInterval = max(0.5, AppSettings.shared.menuBarSamplingInterval)
+        let interval = dashboardVisible ? openInterval : idleInterval
         let priority: TaskPriority = dashboardVisible ? .userInitiated : .utility
 
         let cpuReader = self.cpuReader
