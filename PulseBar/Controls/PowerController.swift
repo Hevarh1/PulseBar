@@ -21,7 +21,11 @@ public final class PowerController: ObservableObject {
     }
 
     public func enableKeepAwake(until endDate: Date?) {
-        guard !isKeepAwakeActive else { return }
+        if isKeepAwakeActive {
+            keepAwakeEndsAt = endDate
+            scheduleTimerIfNeeded(endDate: endDate)
+            return
+        }
 
         let reason = "PulseBar Keep Awake" as CFString
         let result = IOPMAssertionCreateWithName(
@@ -44,9 +48,6 @@ public final class PowerController: ObservableObject {
     }
 
     public func enableKeepAwakeFor(minutes: Int) {
-        if isKeepAwakeActive {
-            disableKeepAwake()
-        }
         let end = Date().addingTimeInterval(TimeInterval(minutes * 60))
         enableKeepAwake(until: end)
     }
@@ -65,13 +66,19 @@ public final class PowerController: ObservableObject {
 
     private func scheduleTimerIfNeeded(endDate: Date?) {
         timerTask?.cancel()
+        timerTask = nil
         guard let endDate else { return }
         timerTask = Task { [weak self] in
             let delay = endDate.timeIntervalSinceNow
             if delay > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                } catch {
+                    return
+                }
             }
-            await self?.disableKeepAwake()
+            guard !Task.isCancelled else { return }
+            self?.disableKeepAwake()
         }
     }
 
