@@ -6,8 +6,36 @@
 #   export NOTARY_PROFILE="PulseBar"   # from: xcrun notarytool store-credentials
 #   ./scripts/package-app.sh
 #
+# CI alternative to NOTARY_PROFILE (no stored keychain profile needed):
+#   NOTARY_APPLE_ID, NOTARY_PASSWORD (app-specific password), NOTARY_TEAM_ID
+#
+# REQUIRE_NOTARIZATION=1 makes the script fail instead of producing an
+# unsigned or un-notarized build (used by the release workflow).
+#
 # Without those, the script ad-hoc signs (fine locally; Gatekeeper will warn on download).
 set -euo pipefail
+
+REQUIRE_NOTARIZATION="${REQUIRE_NOTARIZATION:-0}"
+
+# How to authenticate with Apple's notary service, if at all.
+NOTARY_MODE=""
+if [[ -n "${NOTARY_PROFILE:-}" ]]; then
+  NOTARY_MODE="profile"
+elif [[ -n "${NOTARY_APPLE_ID:-}" && -n "${NOTARY_PASSWORD:-}" && -n "${NOTARY_TEAM_ID:-}" ]]; then
+  NOTARY_MODE="credentials"
+fi
+
+notary_submit() {
+  if [[ "$NOTARY_MODE" == "profile" ]]; then
+    xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait
+  else
+    xcrun notarytool submit "$1" \
+      --apple-id "$NOTARY_APPLE_ID" \
+      --password "$NOTARY_PASSWORD" \
+      --team-id "$NOTARY_TEAM_ID" \
+      --wait
+  fi
+}
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -74,6 +102,17 @@ if [[ -z "${IDENTITY}" ]]; then
   IDENTITY="-"
 fi
 
+if [[ "$REQUIRE_NOTARIZATION" == "1" ]]; then
+  if [[ "$IDENTITY" == "-" ]]; then
+    echo "error: REQUIRE_NOTARIZATION=1 but no Developer ID Application identity was found." >&2
+    exit 1
+  fi
+  if [[ -z "$NOTARY_MODE" ]]; then
+    echo "error: REQUIRE_NOTARIZATION=1 but no notary credentials were provided." >&2
+    exit 1
+  fi
+fi
+
 echo "→ Codesigning with: $IDENTITY"
 SIGN_ARGS=(--force --deep --sign "$IDENTITY")
 if [[ "$IDENTITY" != "-" ]]; then
@@ -105,14 +144,16 @@ else
   echo "→ Zipping for notarization…"
   ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
 
-  if [[ -n "${NOTARY_PROFILE:-}" ]]; then
-    echo "→ Submitting to Apple notary service (profile: $NOTARY_PROFILE)…"
-    xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+  if [[ -n "$NOTARY_MODE" ]]; then
+    echo "→ Submitting to Apple notary service ($NOTARY_MODE)…"
+    notary_submit "$ZIP_PATH"
     echo "→ Stapling notarization ticket…"
     xcrun stapler staple "$APP_DIR"
     # Rebuild zip with stapled app for GitHub Releases.
     rm -f "$ZIP_PATH"
     ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
+    echo "→ Checking Gatekeeper accepts it…"
+    spctl -a -vvv -t install "$APP_DIR"
     echo "✓ Notarized + stapled"
   else
     echo "⚠ Signed with Developer ID but NOTARY_PROFILE unset — not notarized yet."
