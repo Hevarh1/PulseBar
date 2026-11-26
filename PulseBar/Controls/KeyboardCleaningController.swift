@@ -47,7 +47,6 @@ public final class KeyboardCleaningController: ObservableObject {
 
     @Published public private(set) var isActive: Bool = false
     @Published public private(set) var activeMode: CleanOverlayMode?
-    @Published public private(set) var exitHoldProgress: Double = 0
 
     private var cleanWindows: [CleanOverlayWindow] = []
     private var eventTap: CFMachPort?
@@ -55,16 +54,21 @@ public final class KeyboardCleaningController: ObservableObject {
     private var tapBox: CleanKeyTapBox?
     private var localMonitor: Any?
     private var globalMonitor: Any?
+    private var activityMonitor: Any?
 
     private var holdTimer: Timer?
     private var failsafeTimer: Timer?
-    private var holdStartedAt: Date?
+    private var hintHideTimer: Timer?
     private var escDown = false
     private var exitButtonDown = false
     private var previousActivationPolicy: NSApplication.ActivationPolicy?
 
     private let holdDuration: TimeInterval = 2.0
-    private let failsafeDuration: TimeInterval = 90
+    /// Keys are blocked in keyboard mode, so it ends on its own sooner.
+    private let keyboardFailsafe: TimeInterval = 90
+    private let screenFailsafe: TimeInterval = 180
+    /// Clean Screen shows its instructions this long, then goes fully black.
+    private let hintVisibleDuration: TimeInterval = 3.0
 
     private init() {}
 
@@ -84,29 +88,40 @@ public final class KeyboardCleaningController: ObservableObject {
     }
 
     public func exitCleanMode() {
-        stopHoldTimer()
+        holdTimer?.invalidate()
+        holdTimer = nil
         failsafeTimer?.invalidate()
         failsafeTimer = nil
-        holdStartedAt = nil
+        hintHideTimer?.invalidate()
+        hintHideTimer = nil
         escDown = false
         exitButtonDown = false
-        exitHoldProgress = 0
 
         tearDownEventTap()
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
+        for monitor in [localMonitor, globalMonitor, activityMonitor].compactMap({ $0 }) {
+            NSEvent.removeMonitor(monitor)
         }
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            self.globalMonitor = nil
-        }
+        localMonitor = nil
+        globalMonitor = nil
+        activityMonitor = nil
 
-        for window in cleanWindows {
-            window.orderOut(nil)
-            window.close()
-        }
+        // Fade out; the windows stop taking clicks right away.
+        let closing = cleanWindows
         cleanWindows = []
+        for window in closing {
+            window.ignoresMouseEvents = true
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            for window in closing {
+                window.animator().alphaValue = 0
+            }
+        }, completionHandler: {
+            for window in closing {
+                window.orderOut(nil)
+                window.close()
+            }
+        })
 
         if let previousActivationPolicy {
             NSApp.setActivationPolicy(previousActivationPolicy)
@@ -136,18 +151,28 @@ public final class KeyboardCleaningController: ObservableObject {
             : NSScreen.screens
 
         for screen in screens {
-            let window = CleanOverlayWindow(mode: mode, screen: screen) { [weak self] pressed in
+            let window = CleanOverlayWindow(
+                mode: mode,
+                screen: screen,
+                holdDuration: holdDuration
+            ) { [weak self] pressed in
                 self?.handleExitButton(pressed: pressed)
             }
+            window.alphaValue = 0
             window.orderFrontRegardless()
             cleanWindows.append(window)
         }
         cleanWindows.first?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            for window in cleanWindows {
+                window.animator().alphaValue = 1
+            }
+        }
 
         isActive = true
         activeMode = mode
-        exitHoldProgress = 0
 
         if mode == .keyboard {
             installKeyBlocking()
@@ -158,17 +183,27 @@ public final class KeyboardCleaningController: ObservableObject {
                 self?.noteEsc(down: event.type == .keyDown)
                 return nil
             }
+            // Any pointer activity brings the instructions back.
+            activityMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .scrollWheel]
+            ) { [weak self] event in
+                self?.revealHint()
+                return event
+            }
+            scheduleHintHide()
         }
 
         failsafeTimer?.invalidate()
-        failsafeTimer = Timer.scheduledTimer(withTimeInterval: failsafeDuration, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.exitCleanMode()
+        let failsafe = Timer(
+            timeInterval: mode == .screen ? screenFailsafe : keyboardFailsafe,
+            repeats: false
+        ) { _ in
+            Task { @MainActor in
+                KeyboardCleaningController.shared.exitCleanMode()
             }
         }
-        if let failsafeTimer {
-            RunLoop.main.add(failsafeTimer, forMode: .common)
-        }
+        RunLoop.main.add(failsafe, forMode: .common)
+        failsafeTimer = failsafe
     }
 
     private func ensureAccessibility() -> Bool {
@@ -183,6 +218,38 @@ public final class KeyboardCleaningController: ObservableObject {
         return false
     }
 
+    // MARK: - Instructions (Clean Screen goes fully black)
+
+    private func revealHint() {
+        guard activeMode == .screen else { return }
+        for window in cleanWindows {
+            window.setHintVisible(true)
+        }
+        scheduleHintHide()
+    }
+
+    private func scheduleHintHide() {
+        hintHideTimer?.invalidate()
+        hintHideTimer = nil
+        guard activeMode == .screen, !(exitButtonDown || escDown) else { return }
+        let timer = Timer(timeInterval: hintVisibleDuration, repeats: false) { _ in
+            Task { @MainActor in
+                KeyboardCleaningController.shared.hideHint()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hintHideTimer = timer
+    }
+
+    private func hideHint() {
+        guard activeMode == .screen, !(exitButtonDown || escDown) else { return }
+        for window in cleanWindows {
+            window.setHintVisible(false)
+        }
+        // Self-balancing: the cursor comes back on its own when the mouse moves.
+        NSCursor.setHiddenUntilMouseMoves(true)
+    }
+
     // MARK: - Exit hold
 
     private func handleExitButton(pressed: Bool) {
@@ -191,60 +258,44 @@ public final class KeyboardCleaningController: ObservableObject {
     }
 
     fileprivate func noteEsc(down: Bool) {
+        // Key repeat sends more key-downs; only the first one starts a hold.
+        guard escDown != down else { return }
         escDown = down
         updateHoldState()
     }
 
     private func updateHoldState() {
-        let shouldHold = exitButtonDown || escDown
-        if shouldHold {
-            startHoldTimerIfNeeded()
+        if exitButtonDown || escDown {
+            revealHint()
+            hintHideTimer?.invalidate()
+            hintHideTimer = nil
+            startHoldIfNeeded()
         } else {
-            stopHoldTimer()
+            cancelHold()
+            scheduleHintHide()
         }
     }
 
-    private func startHoldTimerIfNeeded() {
+    private func startHoldIfNeeded() {
         guard holdTimer == nil else { return }
-        holdStartedAt = Date()
-        exitHoldProgress = 0
-        // Refresh every window's progress bar.
         for window in cleanWindows {
-            window.setHoldProgress(0)
+            window.setHolding(true)
         }
-
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.tickHold()
+        // The fill animates in Core Animation; this only ends the session.
+        let timer = Timer(timeInterval: holdDuration, repeats: false) { _ in
+            Task { @MainActor in
+                KeyboardCleaningController.shared.exitCleanMode()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         holdTimer = timer
     }
 
-    private func tickHold() {
-        guard let holdStartedAt, exitButtonDown || escDown else {
-            stopHoldTimer()
-            return
-        }
-        let elapsed = Date().timeIntervalSince(holdStartedAt)
-        let progress = min(1, elapsed / holdDuration)
-        exitHoldProgress = progress
-        for window in cleanWindows {
-            window.setHoldProgress(progress)
-        }
-        if progress >= 1 {
-            exitCleanMode()
-        }
-    }
-
-    private func stopHoldTimer() {
+    private func cancelHold() {
         holdTimer?.invalidate()
         holdTimer = nil
-        holdStartedAt = nil
-        exitHoldProgress = 0
         for window in cleanWindows {
-            window.setHoldProgress(0)
+            window.setHolding(false)
         }
     }
 
@@ -332,24 +383,16 @@ public final class KeyboardCleaningController: ObservableObject {
 // MARK: - Pure AppKit overlay (SwiftUI hit-testing is unreliable for hold-to-exit)
 
 private final class CleanOverlayWindow: NSWindow {
-    private let progressFillWidth: NSLayoutConstraint
-    private let onExitPress: (Bool) -> Void
+    private let hintView = NSView()
+    private let exitButton: HoldExitButton
 
-    init(mode: CleanOverlayMode, screen: NSScreen, onExitPress: @escaping (Bool) -> Void) {
-        self.onExitPress = onExitPress
-
-        let progressBar = NSView(frame: .zero)
-        progressBar.wantsLayer = true
-        progressBar.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
-        progressBar.layer?.cornerRadius = 4
-
-        let progressFill = NSView(frame: .zero)
-        progressFill.wantsLayer = true
-        progressFill.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
-        progressFill.layer?.cornerRadius = 4
-
-        let fillWidth = progressFill.widthAnchor.constraint(equalToConstant: 0)
-        self.progressFillWidth = fillWidth
+    init(
+        mode: CleanOverlayMode,
+        screen: NSScreen,
+        holdDuration: TimeInterval,
+        onExitPress: @escaping (Bool) -> Void
+    ) {
+        exitButton = HoldExitButton(holdDuration: holdDuration)
 
         super.init(
             contentRect: screen.frame,
@@ -359,68 +402,62 @@ private final class CleanOverlayWindow: NSWindow {
         )
 
         setFrame(screen.frame, display: true)
-        isOpaque = false
-        backgroundColor = .clear
+        // Clean Screen is solid black edge to edge so dust and smudges show;
+        // Clean Keyboard only needs a dim.
+        isOpaque = mode == .screen
+        backgroundColor = mode == .screen ? .black : .clear
         hasShadow = false
         ignoresMouseEvents = false
         acceptsMouseMovedEvents = true
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         isReleasedWhenClosed = false
-        // Always dark: keeps secondary text legible on the dim and the glass dark.
+        animationBehavior = .none
         appearance = NSAppearance(named: .darkAqua)
 
         let root = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
         root.wantsLayer = true
-        root.layer?.backgroundColor = NSColor.black.withAlphaComponent(mode == .screen ? 0.88 : 0.94).cgColor
+        root.layer?.backgroundColor = mode == .screen
+            ? NSColor.black.cgColor
+            : NSColor.black.withAlphaComponent(0.94).cgColor
         contentView = root
 
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 18
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let card = Self.makeGlassCard()
-        card.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(card)
-        root.addSubview(stack)
+        hintView.wantsLayer = true
+        hintView.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(hintView)
 
         let icon = NSImageView()
-        let symbol = mode == .keyboard ? "keyboard" : "display"
         icon.image = NSImage(
-            systemSymbolName: symbol,
+            systemSymbolName: mode == .keyboard ? "keyboard" : "sparkles",
             accessibilityDescription: nil
         )
-        icon.contentTintColor = NSColor.controlAccentColor
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 52, weight: .light)
+        icon.contentTintColor = NSColor.white.withAlphaComponent(0.85)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 40, weight: .light)
 
-        let title = makeLabel(
+        let title = Self.makeLabel(
             mode == .keyboard ? "Clean Keyboard" : "Clean Screen",
-            size: 28,
-            weight: .bold,
+            size: 26,
+            weight: .semibold,
             color: .white
         )
-        let subtitle = makeLabel(
+        let subtitle = Self.makeLabel(
             mode == .keyboard
-                ? "Keys are blocked. Hold Esc or the Exit button for 2 seconds to finish."
-                : "Screen dimmed for cleaning. Hold Esc or the Exit button for 2 seconds to finish.",
+                ? "All keys are blocked while you wipe."
+                : "Wipe away. Move the mouse to see this again.",
             size: 14,
             weight: .regular,
-            color: .secondaryLabelColor
+            color: NSColor.white.withAlphaComponent(0.6)
         )
-        subtitle.maximumNumberOfLines = 3
+        subtitle.maximumNumberOfLines = 2
         subtitle.preferredMaxLayoutWidth = 420
-        subtitle.alignment = .center
 
-        let holdHint = makeLabel("Hold Exit", size: 13, weight: .medium, color: .white.withAlphaComponent(0.75))
+        let exitHint = Self.makeLabel(
+            "Hold Esc or the button for \(Int(holdDuration)) seconds to exit",
+            size: 12,
+            weight: .medium,
+            color: NSColor.white.withAlphaComponent(0.4)
+        )
 
-        progressBar.translatesAutoresizingMaskIntoConstraints = false
-        progressFill.translatesAutoresizingMaskIntoConstraints = false
-        progressBar.addSubview(progressFill)
-
-        let exitButton = HoldExitButton()
-        exitButton.title = "Exit"
         exitButton.onPressedChanged = onExitPress
         // VoiceOver can't hold a button down; its press exits directly.
         exitButton.onAccessibilityPress = {
@@ -428,69 +465,50 @@ private final class CleanOverlayWindow: NSWindow {
         }
         exitButton.translatesAutoresizingMaskIntoConstraints = false
 
-        stack.addArrangedSubview(icon)
-        stack.addArrangedSubview(title)
-        stack.addArrangedSubview(subtitle)
-        stack.addArrangedSubview(holdHint)
-        stack.addArrangedSubview(progressBar)
-        stack.addArrangedSubview(exitButton)
+        let stack = NSStackView(views: [icon, title, subtitle, exitButton, exitHint])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 12
+        stack.setCustomSpacing(18, after: icon)
+        stack.setCustomSpacing(32, after: subtitle)
+        stack.setCustomSpacing(14, after: exitButton)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        hintView.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: root.centerYAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 40),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -40),
+            hintView.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            hintView.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+            hintView.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 40),
+            hintView.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -40),
 
-            card.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: -44),
-            card.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: 44),
-            card.topAnchor.constraint(equalTo: stack.topAnchor, constant: -36),
-            card.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: 36),
+            stack.leadingAnchor.constraint(equalTo: hintView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: hintView.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: hintView.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: hintView.bottomAnchor),
 
-            progressBar.widthAnchor.constraint(equalToConstant: 260),
-            progressBar.heightAnchor.constraint(equalToConstant: 8),
-            progressFill.leadingAnchor.constraint(equalTo: progressBar.leadingAnchor),
-            progressFill.topAnchor.constraint(equalTo: progressBar.topAnchor),
-            progressFill.bottomAnchor.constraint(equalTo: progressBar.bottomAnchor),
-            fillWidth,
-
-            exitButton.widthAnchor.constraint(equalToConstant: 160),
-            exitButton.heightAnchor.constraint(equalToConstant: 44)
+            exitButton.widthAnchor.constraint(equalToConstant: 220),
+            exitButton.heightAnchor.constraint(equalToConstant: 46)
         ])
     }
 
-    func setHoldProgress(_ progress: Double) {
-        progressFillWidth.constant = 260 * max(0, min(1, progress))
+    func setHintVisible(_ visible: Bool) {
+        let target: CGFloat = visible ? 1 : 0
+        guard hintView.alphaValue != target else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = visible ? 0.2 : 0.8
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            hintView.animator().alphaValue = target
+        }
+    }
+
+    func setHolding(_ holding: Bool) {
+        exitButton.setHolding(holding)
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
-    /// Glass panel behind the overlay content: Liquid Glass on macOS 26+,
-    /// a HUD material on older systems.
-    private static func makeGlassCard() -> NSView {
-        let radius: CGFloat = 28
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.cornerRadius = radius
-            return glass
-        }
-        #endif
-        let blur = NSVisualEffectView()
-        blur.material = .hudWindow
-        blur.blendingMode = .withinWindow
-        blur.state = .active
-        let mask = NSImage(size: NSSize(width: radius * 2 + 1, height: radius * 2 + 1), flipped: false) { rect in
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        mask.resizingMode = .stretch
-        blur.maskImage = mask
-        return blur
-    }
-
-    private func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
+    private static func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
         let field = NSTextField(labelWithString: text)
         field.font = .systemFont(ofSize: size, weight: weight)
         field.textColor = color
@@ -499,20 +517,26 @@ private final class CleanOverlayWindow: NSWindow {
     }
 }
 
+/// Capsule that fills left to right while held; the fill is a Core Animation
+/// layer so it moves at display refresh rate.
 private final class HoldExitButton: NSButton {
     var onPressedChanged: ((Bool) -> Void)?
     var onAccessibilityPress: (() -> Void)?
-    private var isPressed = false
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        bezelStyle = .rounded
+    private let holdDuration: TimeInterval
+    private let fillLayer = CALayer()
+    private let labelLayer = CATextLayer()
+    private var isPressed = false
+    private var isHolding = false
+
+    init(holdDuration: TimeInterval) {
+        self.holdDuration = holdDuration
+        super.init(frame: .zero)
+        // The label is a layer (drawn over the fill); the cell draws no title.
+        title = ""
+        setAccessibilityLabel("Exit")
         isBordered = false
         wantsLayer = true
-        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
-        layer?.cornerRadius = 22
-        contentTintColor = .white
-        font = .systemFont(ofSize: 15, weight: .semibold)
         setButtonType(.momentaryChange)
         // VoiceOver presses the button's cell, which sends this action;
         // mouseDown is overridden, so a mouse click never does.
@@ -525,25 +549,78 @@ private final class HoldExitButton: NSButton {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        layer.backgroundColor = NSColor.white.withAlphaComponent(isPressed ? 0.18 : 0.12).cgColor
+        layer.cornerRadius = bounds.height / 2
+        layer.masksToBounds = true
+        layer.borderWidth = 1
+        layer.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+
+        if fillLayer.superlayer == nil {
+            fillLayer.backgroundColor = NSColor.white.withAlphaComponent(0.32).cgColor
+            fillLayer.anchorPoint = CGPoint(x: 0, y: 0.5)
+            layer.addSublayer(fillLayer)
+
+            labelLayer.string = "Hold to Exit"
+            labelLayer.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+            labelLayer.fontSize = 15
+            labelLayer.alignmentMode = .center
+            labelLayer.foregroundColor = NSColor.white.cgColor
+            layer.addSublayer(labelLayer)
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        let scale = window?.backingScaleFactor ?? 2
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fillLayer.bounds = CGRect(x: 0, y: 0, width: isHolding ? bounds.width : 0, height: bounds.height)
+        fillLayer.position = CGPoint(x: 0, y: bounds.midY)
+        labelLayer.contentsScale = scale
+        labelLayer.frame = CGRect(x: 0, y: (bounds.height - 19) / 2, width: bounds.width, height: 19)
+        CATransaction.commit()
+    }
+
+    func setHolding(_ holding: Bool) {
+        guard holding != isHolding else { return }
+        isHolding = holding
+        let current = fillLayer.presentation()?.bounds.width ?? fillLayer.bounds.width
+        let target = holding ? bounds.width : 0
+        let remaining = holding && bounds.width > 0
+            ? holdDuration * Double(1 - current / bounds.width)
+            : 0.25
+
+        let animation = CABasicAnimation(keyPath: "bounds.size.width")
+        animation.fromValue = current
+        animation.toValue = target
+        animation.duration = max(0.01, remaining)
+        animation.timingFunction = CAMediaTimingFunction(name: holding ? .linear : .easeOut)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fillLayer.bounds.size.width = target
+        fillLayer.add(animation, forKey: "fill")
+        CATransaction.commit()
+    }
+
     override func mouseDown(with event: NSEvent) {
         isPressed = true
-        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.28).cgColor
+        needsDisplay = true
         onPressedChanged?(true)
     }
 
     override func mouseUp(with event: NSEvent) {
-        if isPressed {
-            isPressed = false
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.14).cgColor
-            onPressedChanged?(false)
-        }
+        guard isPressed else { return }
+        isPressed = false
+        needsDisplay = true
+        onPressedChanged?(false)
     }
 
     @objc private func accessibilityPressed(_ sender: Any?) {
         onAccessibilityPress?()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        // Keep hold if they drift slightly; mouseUp still ends it.
     }
 }

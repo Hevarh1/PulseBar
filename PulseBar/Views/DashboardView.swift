@@ -5,7 +5,6 @@ public struct DashboardView: View {
     @ObservedObject private var coordinator = MetricsCoordinator.shared
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var shortcut = DashboardShortcut.shared
-    @State private var memoryFreeRequested = false
 
     /// Order matters: tiles pair up in rows, so the graph tiles sit together.
     private enum Tile: CaseIterable {
@@ -201,7 +200,7 @@ public struct DashboardView: View {
 
     // MARK: - Tiles
 
-    private var visibleTiles: [Tile] {
+    private func visibleTiles(_ snapshot: SystemSnapshot) -> [Tile] {
         Tile.allCases.filter { tile in
             switch tile {
             case .cpu: return settings.showDashboardCPU
@@ -209,7 +208,8 @@ public struct DashboardView: View {
             case .network: return settings.showDashboardNetwork
             case .storage: return settings.showDashboardStorage
             case .gpu: return settings.showDashboardGPU
-            case .fan: return settings.showDashboardFan
+            // A fanless Mac has nothing to show beyond "Passive".
+            case .fan: return settings.showDashboardFan && !snapshot.fan.isFanless
             }
         }
     }
@@ -217,16 +217,17 @@ public struct DashboardView: View {
     /// Two-column tile grid. An eager `Grid` (not `LazyVGrid`) gives the
     /// popover an exact fitted height and lets tiles in a row share one height.
     private func tileGrid(_ snapshot: SystemSnapshot) -> some View {
-        let tiles = visibleTiles
+        let tiles = visibleTiles(snapshot)
         return Grid(horizontalSpacing: DesignTokens.gridSpacing, verticalSpacing: DesignTokens.gridSpacing) {
             ForEach(Array(stride(from: 0, to: tiles.count, by: 2)), id: \.self) { start in
                 GridRow {
-                    tile(tiles[start], snapshot)
                     if start + 1 < tiles.count {
+                        tile(tiles[start], snapshot)
                         tile(tiles[start + 1], snapshot)
                     } else {
-                        // Takes its column share so a lone tile stays half width.
-                        Color.clear.gridCellUnsizedAxes(.vertical)
+                        // A lone last tile spans the row instead of leaving a hole.
+                        tile(tiles[start], snapshot)
+                            .gridCellColumns(2)
                     }
                 }
             }
@@ -316,24 +317,7 @@ public struct DashboardView: View {
                         .foregroundStyle(DesignTokens.secondaryText)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Button {
-                        _ = coordinator.freeUpMemory()
-                        memoryFreeRequested = true
-                        UtilityFeedback.playSuccess()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            memoryFreeRequested = false
-                        }
-                    } label: {
-                        Text(memoryFreeRequested ? "Requested" : "Free")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.primary.opacity(0.12), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(memoryFreeRequested)
-                    .accessibilityLabel(memoryFreeRequested ? "Memory release requested" : "Free up memory")
+                    MemoryFreeButton()
                 }
             }
         }
@@ -554,6 +538,52 @@ public struct DashboardView: View {
         case .fair: return .yellow
         case .serious: return .orange
         case .critical: return .red
+        }
+    }
+}
+
+/// Memory tile action: asks macOS (with an administrator prompt) to purge
+/// inactive file cache, then shows how much it reclaimed.
+private struct MemoryFreeButton: View {
+    @ObservedObject private var cleaner = MemoryCleaner.shared
+
+    var body: some View {
+        Button {
+            cleaner.free()
+        } label: {
+            HStack(spacing: 4) {
+                switch cleaner.phase {
+                case .idle:
+                    Image(systemName: "sparkles")
+                    Text("Free")
+                case .working:
+                    ProgressView().controlSize(.mini)
+                    Text("Freeing")
+                case .done(let summary):
+                    Image(systemName: "checkmark")
+                    Text(summary)
+                }
+            }
+            .font(.system(size: 10, weight: .semibold))
+            .lineLimit(1)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(Color.primary.opacity(0.12), in: Capsule())
+            .contentShape(Capsule())
+            .animation(.smooth(duration: 0.2), value: cleaner.phase)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(cleaner.phase == .working)
+        .help("Purge inactive memory cache (asks for your password)")
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        switch cleaner.phase {
+        case .idle: return "Free up memory"
+        case .working: return "Freeing memory"
+        case .done(let summary): return summary
         }
     }
 }

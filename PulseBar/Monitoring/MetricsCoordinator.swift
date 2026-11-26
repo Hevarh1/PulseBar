@@ -179,9 +179,17 @@ public final class MetricsCoordinator: ObservableObject {
         isRunning = false
     }
 
-    @discardableResult
-    public func freeUpMemory() -> Bool {
-        memoryReader.requestMemoryPurge()
+    /// Runs the admin-authorised purge off the main thread, then refreshes the
+    /// dashboard so the new numbers show right away.
+    public func freeUpMemory() async -> MemoryPurgeResult {
+        let reader = memoryReader
+        let result = await Task.detached(priority: .userInitiated) {
+            reader.purgeWithAdminPrompt()
+        }.value
+        if case .freed = result, isDashboardVisible {
+            restartSampling()
+        }
+        return result
     }
 
     private func collectAndApplyFullSample(

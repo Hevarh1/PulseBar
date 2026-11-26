@@ -46,7 +46,9 @@ public final class MemoryReader: @unchecked Sendable {
         let usedBytes = min(totalBytes, appBytes + wiredBytes + compressedBytes)
 
         let swapUsed = readSwapUsage()
-        let pressure = determineMemoryPressure(
+        // Prefer the kernel's level: the ratio heuristic said "Critical" at
+        // 78% used while macOS itself only reported "warn".
+        let pressure = Self.kernelPressureLevel() ?? determineMemoryPressure(
             usedBytes: usedBytes,
             totalBytes: totalBytes,
             compressedBytes: compressedBytes
@@ -87,30 +89,78 @@ public final class MemoryReader: @unchecked Sendable {
         }
     }
 
-    /// Best-effort ask for reclaimable caches. macOS may ignore this; “Memory Used”
-    /// often will not drop. Prefers `memory_pressure` (no root); falls back to `purge`.
-    @discardableResult
-    public func requestMemoryPurge() -> Bool {
-        if runQuiet("/usr/bin/memory_pressure", arguments: ["-l", "warn"]) {
-            return true
+    /// The kernel's own memory-pressure level (what Activity Monitor's
+    /// pressure graph shows), or nil when the sysctl is unavailable.
+    /// 1 = normal, 2 = warn, 4 = critical.
+    public static func kernelPressureLevel() -> MemoryPressureLevel? {
+        var level: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else {
+            return nil
         }
-        // Root-only; fails silently for normal users.
-        return runQuiet("/usr/sbin/purge", arguments: [])
+        switch level {
+        case 1: return .normal
+        case 2: return .warning
+        case 4: return .critical
+        default: return nil
+        }
     }
 
-    private func runQuiet(_ path: String, arguments: [String]) -> Bool {
-        guard FileManager.default.isExecutableFile(atPath: path) else { return false }
+    /// Bytes the system could hand out right now without paging: free plus
+    /// speculative pages. `purge` moves inactive file cache into this pool, so
+    /// the before/after delta is what a purge actually reclaimed.
+    public func immediatelyFreeBytes() -> UInt64 {
+        var vmStats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &vmStats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        return UInt64(vmStats.free_count + vmStats.speculative_count) * pageSize
+    }
+
+    /// Flushes reclaimable file cache with `/usr/sbin/purge`. purge needs root,
+    /// so macOS shows its standard administrator prompt. Blocks the calling
+    /// thread for the prompt and the purge: never call on the main thread.
+    ///
+    /// (The previous `memory_pressure -l warn` allocated real memory until the
+    /// system hit warning pressure, which froze the dashboard and briefly made
+    /// memory worse; its simulate mode needs root as well.)
+    public func purgeWithAdminPrompt() -> MemoryPurgeResult {
+        let before = immediatelyFreeBytes()
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: path)
-        task.arguments = arguments
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = [
+            "-e",
+            "do shell script \"/usr/sbin/purge\" with prompt \"PulseBar wants to free inactive memory.\" with administrator privileges"
+        ]
+        let errorPipe = Pipe()
         task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
+        task.standardError = errorPipe
         do {
             try task.run()
-            task.waitUntilExit()
-            return task.terminationStatus == 0
         } catch {
-            return false
+            return .failed(error.localizedDescription)
         }
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+
+        guard task.terminationStatus == 0 else {
+            let message = String(data: errorData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // -128: the user pressed Cancel on the password prompt.
+            if message.contains("-128") { return .cancelled }
+            return .failed(message.isEmpty ? "purge exited with status \(task.terminationStatus)" : message)
+        }
+        let after = immediatelyFreeBytes()
+        return .freed(after > before ? after - before : 0)
     }
+}
+
+public enum MemoryPurgeResult: Equatable, Sendable {
+    case freed(UInt64)
+    case cancelled
+    case failed(String)
 }

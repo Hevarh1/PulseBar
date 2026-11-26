@@ -14,6 +14,9 @@ enum DesignTokens {
     /// Height of capsule controls (utility toggles); concentric with `iconWellSize`.
     static let controlHeight: CGFloat = 36
     static let iconWellSize: CGFloat = 26
+    /// Utility grid tiles (four per row, icon over label).
+    static let utilityRadius: CGFloat = 16
+    static let utilityTileHeight: CGFloat = 66
     static let graphHeightCPU: CGFloat = 44
     static let graphHeightDefault: CGFloat = 32
     /// Concentric with the tile corner: `cardRadius - cardPadding`.

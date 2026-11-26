@@ -163,6 +163,11 @@ public final class AppUpdater: ObservableObject {
 
             status = .installing
             let extractedApp = try extractApp(from: zipURL)
+            // Refuse anything not signed by PulseBar's Developer ID before it
+            // can replace the installed app.
+            try await Task.detached(priority: .userInitiated) {
+                try UpdateSignatureVerifier.verify(appAt: extractedApp)
+            }.value
             try stageReplacement(newApp: extractedApp)
             UserDefaults.standard.set(nil, forKey: Self.skippedVersionKey)
             // Replacement script relaunches after we quit.
@@ -241,7 +246,6 @@ public final class AppUpdater: ObservableObject {
         sleep 0.4
         rm -rf "$DST"
         /usr/bin/ditto "$SRC" "$DST"
-        /usr/bin/xattr -cr "$DST" 2>/dev/null || true
         /usr/bin/open "$DST"
         rm -f -- "$0"
         """

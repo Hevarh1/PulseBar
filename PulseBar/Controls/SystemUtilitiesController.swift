@@ -44,6 +44,8 @@ public enum SystemUtilitiesController {
             }
         }
 
+        // Alerts from a menu-bar (accessory) app can open behind the frontmost app.
+        NSApp.activate(ignoringOtherApps: true)
         guard !external.isEmpty else {
             let alert = NSAlert()
             alert.messageText = "No External Volumes"

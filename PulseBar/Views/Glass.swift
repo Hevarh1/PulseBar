@@ -129,6 +129,46 @@ struct GlassCapsuleButtonStyle: ButtonStyle {
         configuration.label
             .contentShape(Capsule())
             .glassSurface(in: Capsule(), interactive: true, isPressed: configuration.isPressed)
+            .pressScale(configuration.isPressed)
+    }
+}
+
+/// Rounded-rectangle glass button for the utility grid tiles.
+struct GlassTileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: DesignTokens.utilityRadius, style: .continuous)
+        configuration.label
+            .contentShape(shape)
+            .glassSurface(in: shape, interactive: true, isPressed: configuration.isPressed)
+            .pressScale(configuration.isPressed)
+    }
+}
+
+/// Plain button that only adds the press response; the label draws itself.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .pressScale(configuration.isPressed)
+    }
+}
+
+extension View {
+    /// Small spring-back squeeze while pressed. Runs only on press and
+    /// release, never per sample, so it costs nothing while idle.
+    func pressScale(_ isPressed: Bool) -> some View {
+        modifier(PressScaleModifier(isPressed: isPressed))
+    }
+}
+
+private struct PressScaleModifier: ViewModifier {
+    let isPressed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isPressed)
     }
 }
 

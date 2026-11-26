@@ -14,6 +14,8 @@ public final class TrashController {
         alert.addButton(withTitle: "Empty Trash")
         alert.addButton(withTitle: "Cancel")
 
+        // Alerts from a menu-bar (accessory) app can open behind the frontmost app.
+        NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
             emptyTrash()
