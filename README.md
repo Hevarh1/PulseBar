@@ -1,118 +1,154 @@
 <p align="center">
-  <img src="docs/icon.png" alt="PulseBar" width="128" height="128">
+  <img src="docs/banner.png" alt="PulseBar: your Mac's vital signs, live in the menu bar" width="100%">
 </p>
 
-# PulseBar
+<p align="center">
+  A free, local-only system monitor for the macOS menu bar.<br>
+  CPU, memory and temperature at a glance, a live dashboard one click away, and 14 Mac tools built in.
+</p>
 
-**Local-only** macOS menu-bar system monitor.  
-Live CPU · Memory · Temperature · Network · utilities — with **zero telemetry**.
+<p align="center">
+  <a href="https://github.com/Hevarh1/PulseBar/releases/latest/download/PulseBar.app.zip"><b>⬇&nbsp; Download PulseBar</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/Hevarh1/PulseBar/releases">All releases</a>
+</p>
 
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
-![License: MIT](https://img.shields.io/badge/License-MIT-green)
-[![Download](https://img.shields.io/github/v/release/Hevarh1/PulseBar?label=Download&logo=apple)](https://github.com/Hevarh1/PulseBar/releases/latest/download/PulseBar.app.zip)
+<p align="center">
+  <a href="https://github.com/Hevarh1/PulseBar/releases/latest"><img src="https://img.shields.io/github/v/release/Hevarh1/PulseBar?label=release&color=0a84ff" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-0a84ff" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/Apple%20Silicon-native-555" alt="Apple Silicon">
+  <img src="https://img.shields.io/badge/notarized-by%20Apple-2ea44f" alt="Notarized by Apple">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT license"></a>
+</p>
 
-**[↓ Download PulseBar.app.zip](https://github.com/Hevarh1/PulseBar/releases/latest/download/PulseBar.app.zip)** · [All releases](https://github.com/Hevarh1/PulseBar/releases)
+<p align="center">
+  <img src="docs/demo.gif" alt="PulseBar opening its dashboard from the menu bar, and over Xcode with Control-Command-P" width="720">
+</p>
 
-## Features
+## Why PulseBar
 
-- **Menu bar** — TEM / MEM / CPU (and optional network, battery, uptime)
-- **Dashboard** — live graphs, sensors, and a full utility grid (no scrolling required)
-- **Native glass design** — on macOS 26+ the dashboard's Liquid Glass tiles float over the desktop like Control Center; macOS 14–15 get a frosted popover
-- **Honest sensors** — Activity Monitor–style memory; AppleSMC temperature (not fake thermal enums); live GPU utilization from the GPU driver's own statistics
-- **Utilities** — Clean Keyboard / Screen, Dark Mode, Empty Trash, Lock, Hide Dock/Desktop, Keep Awake, Meeting Mode, and more
-- **In-app updates** — Settings can check GitHub Releases and install the new `.app` for you
-- **Private by design** — no accounts, no analytics; metrics stay local (optional update check only)
+- **See it at a glance.** Temperature, memory and CPU sit in your menu bar and update live.
+- **Open it from anywhere.** Click a reading, or press **⌃⌘P** in any app, to drop down the full dashboard.
+- **Do the small jobs in one click.** Keep the Mac awake, lock it, hide the Dock, wipe the screen, and more.
+- **Keep your data.** No accounts and no analytics. Your stats never leave your Mac.
 
-## Requirements
+## What's inside
 
-- macOS **14** (Sonoma) or later
-- [Xcode](https://developer.apple.com/xcode/) or Command Line Tools (`xcode-select --install`) — only if building from source
-- Apple Silicon or Intel Mac
+<table>
+<tr>
+<td valign="top">
+
+**In the menu bar**
+Temperature, memory and CPU by default. Network rate, battery level and uptime are one switch away in Settings.
+
+**The dashboard**
+Live graphs for CPU (user and system), memory (with a one-click **Free** button), network and GPU, plus storage and fan speed. MacBook Pros and other Macs with fans get a Fan tile showing each fan's RPM and how hard it's working; fanless Macs like the MacBook Air don't show it. Every section can be shown or hidden.
+
+**Honest numbers**
+Memory is counted the way Activity Monitor counts it. Temperature and fan speed come straight from the Mac's System Management Controller (AppleSMC), not a rough thermal state. GPU use comes from the GPU driver's own statistics.
+
+**Native design**
+On macOS 26 the dashboard's Liquid Glass tiles float over the desktop like Control Center. macOS 14 and 15 get a frosted panel.
+
+**Safe updates**
+Settings can check GitHub Releases and install a new version for you. Before it replaces the app, PulseBar checks that the download is signed with PulseBar's Developer ID.
+
+</td>
+<td valign="top" width="340">
+<img src="docs/dashboard.png" alt="The PulseBar dashboard: CPU, memory, network, GPU, storage and fan tiles above a grid of 14 utility buttons" width="320">
+</td>
+</tr>
+</table>
+
+### 14 one-click tools
+
+| Tool | What it does |
+|------|--------------|
+| **Meeting Mode** | Hides desktop icons and keeps the Mac awake for an hour |
+| **Keep Awake** | Stops the Mac sleeping for 30 minutes, 1 hour, or until you turn it off |
+| **Dark Mode** | Switches the system between light and dark |
+| **Lock Screen** | Locks the Mac right away |
+| **Hide Dock** | Turns Dock auto-hide on or off |
+| **Hide Desktop** | Hides or shows the icons on your desktop |
+| **Screen Saver** | Starts the screen saver |
+| **Screenshots** | Opens your screenshots folder |
+| **Clean Screen** | Turns every display black so smudges are easy to see and wipe. Hold **Esc** for 2 seconds to exit |
+| **Clean Keyboard** | Blocks key presses so you can wipe the keyboard. Hold **Esc** for 2 seconds to exit |
+| **Copy IP** | Copies your local IP address |
+| **Clear Clipboard** | Empties the clipboard |
+| **Eject Volumes** | Ejects all external drives, after asking first |
+| **Empty Trash** | Empties the Trash |
 
 ## Install
 
-### Option A — Download release (recommended)
+1. Download **[PulseBar.app.zip](https://github.com/Hevarh1/PulseBar/releases/latest/download/PulseBar.app.zip)**.
+2. Unzip it and move `PulseBar.app` into **Applications**.
+3. Open it. PulseBar is signed and notarized by Apple, so macOS only asks you to confirm once that you want to open an app from the internet.
 
-1. Download **[PulseBar.app.zip](https://github.com/Hevarh1/PulseBar/releases/latest/download/PulseBar.app.zip)**
-2. Unzip and move `PulseBar.app` into **Applications**
-3. Open once (right-click → **Open** if Gatekeeper warns)
+Look for **TEM · MEM · CPU** in your menu bar.
 
-### Option B — Build a `.app`
+**Requirements:** macOS 14 (Sonoma) or later. The download is built for Apple Silicon. On an Intel Mac, build it from source (below).
+
+### Permissions
+
+PulseBar only asks for these when you first use the tool that needs them.
+
+| Tool | Permission |
+|------|------------|
+| Clean Keyboard | **System Settings → Privacy & Security → Accessibility** (turn on PulseBar) |
+| Dark Mode, Empty Trash, Lock Screen fallback | **Automation**, prompted on first use |
+
+## Using PulseBar
+
+- **Open the dashboard:** click TEM, MEM or CPU in the menu bar, or press **⌃⌘P** (Control-Command-P) in any app. Press it again to close.
+- **Settings** (gear at the bottom of the dashboard): choose which readings appear in the menu bar and dashboard, the refresh intervals, °C or °F, Launch at Login, the ⌃⌘P shortcut, and automatic update checks.
+- **Quit** from the button at the bottom of the dashboard.
+
+## Privacy
+
+- Metrics and preferences stay on your Mac.
+- No accounts, analytics or crash reporters.
+- The only network request is the optional update check, which talks to GitHub Releases. You can turn it off in Settings.
+- Accessibility and Automation are only used for the tools you trigger.
+
+## Build from source
+
+You need Xcode or the Command Line Tools (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/Hevarh1/PulseBar.git
 cd PulseBar
-chmod +x scripts/package-app.sh
-./scripts/package-app.sh
+./scripts/package-app.sh    # builds dist/PulseBar.app
 open dist/PulseBar.app
 ```
 
-Then optionally drag `dist/PulseBar.app` into **Applications**.
-
-### Option C — Run from source
+Or run it straight from the package:
 
 ```bash
-git clone https://github.com/Hevarh1/PulseBar.git
-cd PulseBar
 swift run PulseBar
 ```
 
-> When you use `swift run`, macOS may attribute **Accessibility** to **Terminal** (not PulseBar). Prefer Option A or B for Clean Keyboard and Launch at Login.
+> With `swift run`, macOS gives Accessibility to **Terminal** instead of PulseBar, so use the packaged app for Clean Keyboard and Launch at Login.
 
-## First launch permissions
-
-| Feature | Permission |
-|---------|------------|
-| Clean Keyboard (block keys) | **Privacy & Security → Accessibility** — enable PulseBar (or Terminal if using `swift run`) |
-| Dark Mode / Empty Trash / Lock fallback | **Automation** (prompted on first use) |
-
-PulseBar never phones home. Permissions are only for local system controls you trigger.
-
-## Usage
-
-1. Look for **TEM / MEM / CPU** in the menu bar.
-2. Click any of them to open the dashboard — or press **⌃⌘P** (Control-Command-P) in any app to show or hide it. The shortcut is shown in the dashboard header and can be turned off in Settings.
-3. Use **Settings** (gear) for menu-bar / dashboard intervals, units, and which metrics appear.
-4. Quit from the dashboard footer or Force Quit if needed.
-
-## Development
+### Development
 
 ```bash
-swift build          # debug build
-swift run PulseBar   # run
-swift test           # unit tests
-./scripts/package-app.sh   # release .app in dist/
+swift build                 # debug build
+swift test                  # unit tests
+./scripts/package-app.sh    # release .app in dist/
 ```
-
-Project layout:
 
 ```
 PulseBar/
-  App/           # NSApplication, menu bar
-  Monitoring/    # CPU, memory, thermal, disk, network, GPU, battery
-  Views/         # SwiftUI dashboard
-  Controls/      # Dock, desktop, clean modes, utilities
-  Resources/     # AppIcon.png
+  App/          app delegate, menu bar item, dashboard panel
+  Monitoring/   CPU, memory, temperature, disk, network, GPU, battery readers
+  Models/       settings and metric types
+  Views/        SwiftUI dashboard and settings
+  Controls/     Dock, desktop, clean modes and the other tools
+  Utilities/    formatting, global shortcut, updater
+  Resources/    app icon
+PulseBarTests/  unit tests
 ```
-
-## Releasing (for maintainers)
-
-Releases are **tag-driven**. Pushing a `v*` tag (for example `v1.2.0`) runs [.github/workflows/release.yml](.github/workflows/release.yml), which:
-
-1. Sets `CFBundleShortVersionString` from the tag
-2. Builds `PulseBar.app.zip`
-3. Publishes a GitHub Release with notes generated from commits since the previous tag
-
-Installed copies pick that up via **Settings → Updates**.
-
-```bash
-# Bump the marketing version in PulseBar/Info.plist if needed, then:
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-Pull requests and pushes to `main` run [.github/workflows/ci.yml](.github/workflows/ci.yml) (`swift build` + `swift test`) and do **not** publish a release.
 
 Optional local Xcode project (ignored by git):
 
@@ -120,13 +156,25 @@ Optional local Xcode project (ignored by git):
 python3 scripts/generate_xcodeproj.py   # writes PulseBar.xcodeproj
 ```
 
-## Privacy
+### Releasing (maintainers)
 
-- Metrics and preferences stay on your Mac.
-- No crash reporters, no accounts, no analytics.
-- Optional **update checks** contact GitHub Releases only (can be turned off in Settings).
-- Optional Automation / Accessibility only when you use those utilities.
+Releases are tag-driven. Pushing a `v*` tag runs [release.yml](.github/workflows/release.yml), which:
+
+1. Sets the app version from the tag.
+2. Builds, signs with Developer ID, notarizes and staples `PulseBar.app.zip`. This needs the `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `NOTARY_APPLE_ID`, `NOTARY_PASSWORD` and `NOTARY_TEAM_ID` repository secrets, and the workflow refuses to publish an unsigned build.
+3. Publishes a GitHub Release with notes generated from the commits since the previous tag.
+
+```bash
+git tag v1.4.0
+git push origin v1.4.0
+```
+
+Installed copies pick the release up through **Settings → Updates**. Pull requests and pushes to `main` run [ci.yml](.github/workflows/ci.yml) (`swift build` and `swift test`) and never publish a release.
+
+## Feedback
+
+Found a bug or want a tool added? [Open an issue](https://github.com/Hevarh1/PulseBar/issues). Pull requests are welcome.
 
 ## License
 
-[MIT](LICENSE) — free to use, modify, and redistribute.
+[MIT](LICENSE). Free to use, modify and share.
