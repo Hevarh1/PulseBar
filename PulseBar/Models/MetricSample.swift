@@ -159,7 +159,10 @@ public struct NetworkSample: Identifiable, Sendable {
 public struct FanSample: Identifiable, Sendable {
     public let id = UUID()
     public let fanCount: Int
+    /// Current speed of each fan in RPM, in SMC order. Empty when unreadable.
     public let fanSpeeds: [Double]
+    /// Each fan's rated maximum RPM, when the SMC reports it.
+    public let maxSpeeds: [Double]
     public let isFanless: Bool
     public let statusDescription: String
     public let timestamp: Date
@@ -167,15 +170,26 @@ public struct FanSample: Identifiable, Sendable {
     public init(
         fanCount: Int = 0,
         fanSpeeds: [Double] = [],
+        maxSpeeds: [Double] = [],
         isFanless: Bool = true,
         statusDescription: String = "No fan detected",
         timestamp: Date = Date()
     ) {
         self.fanCount = fanCount
         self.fanSpeeds = fanSpeeds
+        self.maxSpeeds = maxSpeeds
         self.isFanless = isFanless
         self.statusDescription = statusDescription
         self.timestamp = timestamp
+    }
+
+    /// Apple Silicon fans stop completely at low load and report ~0 RPM.
+    public var allStopped: Bool { !fanSpeeds.isEmpty && fanSpeeds.allSatisfy { $0 < 1 } }
+
+    /// Fan `index`'s speed as a fraction of its maximum (0–1), if both are known.
+    public func load(_ index: Int) -> Double? {
+        guard fanSpeeds.indices.contains(index), maxSpeeds.indices.contains(index), maxSpeeds[index] > 0 else { return nil }
+        return min(1, max(0, fanSpeeds[index] / maxSpeeds[index]))
     }
 }
 

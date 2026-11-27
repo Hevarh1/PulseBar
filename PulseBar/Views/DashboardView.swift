@@ -6,7 +6,8 @@ public struct DashboardView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var shortcut = DashboardShortcut.shared
 
-    /// Order matters: tiles pair up in rows, so the graph tiles sit together.
+    /// Order matters: tiles pair up in rows, so the graph tiles sit together
+    /// and Fan sits next to Storage.
     private enum Tile: CaseIterable {
         case cpu, memory, network, gpu, storage, fan
     }
@@ -474,16 +475,79 @@ public struct DashboardView: View {
     }
 
     private func fanTile(_ snapshot: SystemSnapshot) -> some View {
-        CompactMetricTile(title: "Fan", icon: snapshot.fan.isFanless ? "fan.slash" : "fan", accent: DesignTokens.fan) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(snapshot.fan.isFanless ? "Passive" : "\(snapshot.fan.fanCount) fan\(snapshot.fan.fanCount == 1 ? "" : "s")")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                Text(snapshot.fan.statusDescription)
-                    .font(.system(size: 10))
-                    .foregroundStyle(DesignTokens.secondaryText)
-                    .lineLimit(3)
+        let fan = snapshot.fan
+        return CompactMetricTile(title: "Fan", icon: "fan", accent: DesignTokens.fan) {
+            if fan.fanSpeeds.isEmpty {
+                // The SMC reported fans but no readable speed.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(fan.fanCount) fan\(fan.fanCount == 1 ? "" : "s")")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    Text(fan.statusDescription)
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignTokens.secondaryText)
+                }
+            } else if fan.allStopped {
+                // Apple Silicon fans switch off completely when the Mac is cool.
+                VStack(alignment: .leading, spacing: 6) {
+                    LiveMetricValue("Off")
+                    Text("Spins up under load")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(DesignTokens.secondaryText)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Fans off. They spin up under load.")
+            } else if fan.fanCount == 1 {
+                fanGauge(fan, 0, valueSize: 22)
+            } else {
+                // Several fans share the tile as compact rows.
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(fan.fanSpeeds.indices, id: \.self) { index in
+                        fanGauge(fan, index, valueSize: 16)
+                    }
+                }
             }
         }
+    }
+
+    private func fanGauge(_ fan: FanSample, _ index: Int, valueSize: CGFloat) -> some View {
+        let rpm = Int(fan.fanSpeeds[index].rounded())
+        let load = fan.load(index)
+        let single = fan.fanCount == 1
+        let name = single ? "Fan" : "Fan \(index + 1)"
+        let percent = load.map { "\(Int(($0 * 100).rounded()))%" }
+        return VStack(alignment: .leading, spacing: single ? 8 : 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                LiveMetricValue(rpm.formatted(), size: valueSize)
+                Text("rpm")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.secondaryText)
+                Spacer(minLength: 4)
+                Text(single ? (percent ?? "") : name)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.secondaryText)
+                    .monospacedDigit()
+            }
+            if let load {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.08))
+                        Capsule()
+                            .fill(DesignTokens.fan)
+                            .frame(width: max(6, geo.size.width * CGFloat(load)))
+                    }
+                }
+                .frame(height: 6)
+            }
+            if single, fan.maxSpeeds.indices.contains(index), fan.maxSpeeds[index] > 0 {
+                Text("Max \(Int(fan.maxSpeeds[index].rounded()).formatted()) rpm")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(DesignTokens.secondaryText)
+                    .monospacedDigit()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(load.map { "\(name), \(rpm) RPM, \(Int(($0 * 100).rounded())) percent of maximum" } ?? "\(name), \(rpm) RPM")
     }
 
     private func legendDot(_ color: Color, _ text: String, spoken: String) -> some View {

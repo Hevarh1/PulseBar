@@ -24,40 +24,6 @@ public final class ThermalReader: @unchecked Sendable {
 
     // MARK: - AppleSMC
 
-    /// 80-byte SMCKeyData layout: `data8` at offset 42, `result` at 40, `bytes` at 48.
-    /// Empirically required by AppleSMC's user client on Apple Silicon.
-    private struct SMCKeyData {
-        var key: UInt32 = 0
-        var vers: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0, 0, 0, 0, 0, 0)
-        var versPad: (UInt8, UInt8) = (0, 0)
-        var pLimitVersion: UInt16 = 0
-        var pLimitLength: UInt16 = 0
-        var cpuPLimit: UInt32 = 0
-        var gpuPLimit: UInt32 = 0
-        var memPLimit: UInt32 = 0
-        var dataSize: UInt32 = 0
-        var dataType: UInt32 = 0
-        var dataAttributes: UInt8 = 0
-        var keyInfoPad: (UInt8, UInt8, UInt8) = (0, 0, 0)
-        var result: UInt8 = 0
-        var status: UInt8 = 0
-        var data8: UInt8 = 0
-        var data8Pad: UInt8 = 0
-        var data32: UInt32 = 0
-        var bytes: (
-            UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
-            UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
-            UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
-            UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8
-        ) = (
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-        )
-    }
-
-    private static let smcKeyInfo: UInt8 = 9
-    private static let smcReadKey: UInt8 = 5
-
     /// Chip-family CPU package key sets (not a union of every model).
     /// Select one family table; mixing them and taking the global max over-reads
     /// (e.g. `Tp0f` / `Tp0E` sit well above the typical package cluster).
@@ -73,19 +39,10 @@ public final class ThermalReader: @unchecked Sendable {
     /// Cached per-machine key set (whichever family table has the most readable keys).
     private var selectedCPUTemperatureKeys: [String]?
 
-    private var smcConnection: io_connect_t = 0
-    private var smcAvailable: Bool = false
+    private let smc = SMCConnection.shared
 
     public init() {
-        setupSMC()
         setupHIDClient()
-    }
-
-    deinit {
-        if smcConnection != 0 {
-            IOServiceClose(smcConnection)
-            smcConnection = 0
-        }
     }
 
     public func sample() -> ThermalSample {
@@ -114,90 +71,12 @@ public final class ThermalReader: @unchecked Sendable {
 
     // MARK: - SMC
 
-    private func setupSMC() {
-        var iterator: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSMC"), &iterator) == KERN_SUCCESS else {
-            return
-        }
-        let service = IOIteratorNext(iterator)
-        IOObjectRelease(iterator)
-        guard service != 0 else { return }
-        var conn: io_connect_t = 0
-        let kr = IOServiceOpen(service, mach_task_self_, 0, &conn)
-        IOObjectRelease(service)
-        guard kr == KERN_SUCCESS else { return }
-        smcConnection = conn
-        smcAvailable = true
-    }
-
-    private static func fourCC(_ string: String) -> UInt32 {
-        let bytes = Array(string.utf8)
-        guard bytes.count == 4 else { return 0 }
-        return (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) | (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
-    }
-
-    private static func typeFourCC(_ type: UInt32) -> String {
-        let chars: [UInt8] = [
-            UInt8((type >> 24) & 0xff),
-            UInt8((type >> 16) & 0xff),
-            UInt8((type >> 8) & 0xff),
-            UInt8(type & 0xff)
-        ]
-        return String(bytes: chars, encoding: .ascii) ?? ""
-    }
-
-    private func smcCall(_ input: inout SMCKeyData) -> SMCKeyData? {
-        guard smcConnection != 0 else { return nil }
-        var output = SMCKeyData()
-        let inSize = MemoryLayout<SMCKeyData>.stride
-        var outSize = inSize
-        let kr = withUnsafeMutablePointer(to: &input) { inPtr in
-            withUnsafeMutablePointer(to: &output) { outPtr in
-                IOConnectCallStructMethod(smcConnection, 2, inPtr, inSize, outPtr, &outSize)
-            }
-        }
-        guard kr == KERN_SUCCESS else { return nil }
-        return output
-    }
-
     private func smcReadTemperature(key: String) -> Double? {
-        var infoIn = SMCKeyData()
-        infoIn.key = Self.fourCC(key)
-        infoIn.data8 = Self.smcKeyInfo
-        guard let info = smcCall(&infoIn), info.result == 0, info.dataSize > 0, info.dataSize <= 32 else {
+        // Temperature keys are `flt ` on Apple Silicon and `sp78` on Intel.
+        guard let raw = smc.read(key), raw.type == "flt " || raw.type == "sp78",
+              let temp = SMCValue.decode(type: raw.type, bytes: raw.bytes), temp > 5, temp < 130 else {
             return nil
         }
-
-        var readIn = SMCKeyData()
-        readIn.key = Self.fourCC(key)
-        readIn.dataSize = info.dataSize
-        readIn.data8 = Self.smcReadKey
-        guard let read = smcCall(&readIn), read.result == 0 else {
-            return nil
-        }
-
-        let type = Self.typeFourCC(info.dataType)
-        let byteTuple = read.bytes
-        let bytes: [UInt8] = [
-            byteTuple.0, byteTuple.1, byteTuple.2, byteTuple.3,
-            byteTuple.4, byteTuple.5, byteTuple.6, byteTuple.7
-        ]
-
-        let value: Double?
-        if type == "flt " {
-            var floatValue: Float = 0
-            _ = bytes.withUnsafeBytes { raw in
-                memcpy(&floatValue, raw.baseAddress!, 4)
-            }
-            value = Double(floatValue)
-        } else if type == "sp78" {
-            let raw = (Int16(bytes[0]) << 8) | Int16(bytes[1])
-            value = Double(raw) / 256.0
-        } else {
-            value = nil
-        }
-
-        guard let temp = value, temp > 5, temp < 130 else { return nil }
         return temp
     }
 
@@ -228,7 +107,7 @@ public final class ThermalReader: @unchecked Sendable {
 
     /// CPU package temperature: mean of the active chip's `Tp*` set.
     private func readSMCTemperature() -> Double? {
-        guard smcAvailable else { return nil }
+        guard smc.isAvailable else { return nil }
         let keys = resolveCPUTemperatureKeys()
         guard !keys.isEmpty else { return nil }
 
